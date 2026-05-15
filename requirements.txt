@@ -16,7 +16,16 @@ rerun-sdk>=0.18
 #   pip install git+https://github.com/facebookresearch/vggt.git
 #   (downloads weights automatically on first use via HuggingFace)
 
-# Grounded-SAM-2 — install from source:
-#   git clone https://github.com/IDEA-Research/Grounded-SAM-2 && cd Grounded-SAM-2
-#   pip install -e .
-#   (then download weights per their README into checkpoints/)
+# Grounded-SAM-2 dependencies (installed alongside the source clone):
+supervision>=0.21
+transformers>=4.40,<5.0
+addict
+yapf
+timm
+pycocotools
+
+# Grounded-SAM-2 — install from source (bundles sam2 + groundingdino):
+#   git clone https://github.com/IDEA-Research/Grounded-SAM-2 /workspace/Grounded-SAM-2
+#   pip install -e /workspace/Grounded-SAM-2
+#   pip install --no-build-isolation -e /workspace/Grounded-SAM-2/grounding_dino
+#   echo /workspace/Grounded-SAM-2 > $(python -c "import site; print(site.getsitepackages()[0])")/grounded_sam2.pth
