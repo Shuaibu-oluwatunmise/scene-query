@@ -31,12 +31,10 @@ DEFAULT_WEIGHTS = REPO_ROOT / "checkpoints" / "vggt"
 DEFAULT_OUT = REPO_ROOT / "outputs" / "vggt_test.ply"
 
 # VGGT's own example images from their GitHub repo
+# raw.githubusercontent.com serves the actual file content (needed for download)
 EXAMPLE_IMAGE_URLS = [
-    "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/frame_0001.jpg",
-    "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/frame_0002.jpg",
-    "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/frame_0003.jpg",
-    "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/frame_0004.jpg",
-    "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/frame_0005.jpg",
+    f"https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/{i:02d}.png"
+    for i in range(1, 9)
 ]
 
 
