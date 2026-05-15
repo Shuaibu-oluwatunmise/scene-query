@@ -95,6 +95,12 @@ def main() -> None:
     scene["poses"] = geometry["poses"]
 
     save_scene(scene, args.out)
+
+    # Save intrinsics alongside the scene so query.py can draw camera frustums
+    import numpy as np
+    np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],
+                        image_size=np.array(geometry["image_size"]))
+
     print(f"\nScene saved -> {args.out}")
     print("Query it with:")
     print(f'  python query.py {args.out} "find the chair"')
