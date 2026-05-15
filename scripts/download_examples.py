@@ -1,27 +1,27 @@
 """
-Download VGGT example room images into examples/room/.
+Download example tabletop images into examples/tabletop/.
 
-These are the images used for development and demo purposes.
-Run this once — no GPU needed.
+The images are already included in the repo — only run this if you
+deleted them or need to restore them.
 
 Usage:
     python scripts/download_examples.py
 """
 
-import urllib.request
 import sys
+import urllib.request
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
-DEST_DIR = REPO_ROOT / "examples" / "room"
+DEST_DIR = REPO_ROOT / "examples" / "tabletop"
 
-BASE_URL = "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/room/images"
-IMAGE_NAMES = ["no_overlap_1.png"] + [f"no_overlap_{i}.jpg" for i in range(2, 9)]
+BASE_URL = "https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images"
+IMAGE_NAMES = [f"{i:02d}.png" for i in range(0, 25)]  # 00.png through 24.png
 
 
 def main() -> None:
     DEST_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Downloading {len(IMAGE_NAMES)} room images -> {DEST_DIR}/\n")
+    print(f"Downloading {len(IMAGE_NAMES)} tabletop images -> {DEST_DIR}/\n")
 
     for name in IMAGE_NAMES:
         dest = DEST_DIR / name
@@ -36,9 +36,9 @@ def main() -> None:
             print(f"  ERROR: {e}")
             sys.exit(1)
 
-    print(f"\nDone. {len(IMAGE_NAMES)} images in {DEST_DIR}/")
+    print(f"\nDone. {len(list(DEST_DIR.iterdir()))} images in {DEST_DIR}/")
     print("\nRun the pipeline with:")
-    print("  python reconstruct.py --images examples/room/ --out outputs/room/")
+    print("  python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/")
 
 
 if __name__ == "__main__":

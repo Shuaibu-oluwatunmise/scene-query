@@ -6,15 +6,15 @@ Most reconstruction pipelines produce a point cloud or a Gaussian splat — a re
 
 ```bash
 # Run on the included example images
-python reconstruct.py --images examples/room/ --out outputs/room/
+python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
 
 # Or on your own video
-python reconstruct.py --video path/to/video.mp4 --out outputs/room/
+python reconstruct.py --video path/to/video.mp4 --out outputs/tabletop/
 
 # Query the scene
-python query.py outputs/room/ "find the chair"
-python query.py outputs/room/ --free-space --floor-z 0.0
-python query.py outputs/room/ --reachable-from 0.0 0.0 0.9
+python query.py outputs/tabletop/ "find the chair"
+python query.py outputs/tabletop/ --free-space --floor-z 0.0
+python query.py outputs/tabletop/ --reachable-from 0.0 0.0 0.9
 ```
 
 Built for Humanoid's Perception & Spatial AI internship challenge. See [docs/design_note.md](docs/design_note.md) for the full rationale.
@@ -60,22 +60,22 @@ outputs/room/
 
 ```bash
 # Reconstruct from a directory of images
-python reconstruct.py --images examples/room/ --out outputs/room/
+python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
 
 # Reconstruct from a video file
-python reconstruct.py --video room.mp4 --out outputs/room/ [--fps 5]
+python reconstruct.py --video scene.mp4 --out outputs/tabletop/ [--fps 5]
 
 # Specify object labels (default: chair,table,sofa,door,window,bed,desk)
-python reconstruct.py --images examples/room/ --out outputs/room/ --labels "chair,table,door"
+python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/ --labels "chair,table,door"
 
 # Query by object name
-python query.py outputs/room/ "find the chair"
+python query.py outputs/tabletop/ "find the chair"
 
 # Query for navigable free space
-python query.py outputs/room/ --free-space [--floor-z <metres>]
+python query.py outputs/tabletop/ --free-space [--floor-z <metres>]
 
 # Query for objects reachable from a robot base position
-python query.py outputs/room/ --reachable-from <x> <y> <z> [--reach 0.7]
+python query.py outputs/tabletop/ --reachable-from <x> <y> <z> [--reach 0.7]
 ```
 
 ## Getting started
@@ -103,9 +103,9 @@ python scripts/download_grounding_dino.py
 #    Also install Grounded-SAM-2 from source:
 #    https://github.com/IDEA-Research/Grounded-SAM-2
 
-# 6. Run on the included room images
-python reconstruct.py --images examples/room/ --out outputs/room/
-python query.py outputs/room/ "find the chair"
+# 6. Run on the included tabletop images
+python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
+python query.py outputs/tabletop/ "find the chair"
 ```
 
 **On RunPod or any machine with a persistent volume**, pass `--dir` to keep
@@ -144,7 +144,5 @@ scene-query/
 ├── checkpoints/
 │   └── README.md               # documents where model weights live
 └── examples/
-    └── room/                   # 8 room images for development and demo
-        ├── no_overlap_1.png
-        └── no_overlap_2-8.jpg
+    └── tabletop/               # 25 images of a tabletop scene (00.png–24.png)
 ```
