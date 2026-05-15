@@ -139,12 +139,26 @@ def main() -> None:
     rgb = imgs.reshape(-1, 3)
     conf = conf.reshape(-1)
 
-    # Keep only high-confidence points to keep .ply file manageable
-    threshold = np.percentile(conf, 10)  # drop only the bottom 10%
+    # Step 1: confidence filter — drop bottom 25%
+    threshold = np.percentile(conf, 25)
     mask = conf > threshold
     xyz, rgb = xyz[mask], rgb[mask]
+    print(f"  After confidence filter : {len(xyz):,} points")
 
-    print(f"Point cloud: {len(xyz):,} points (after confidence filtering)")
+    # Step 2: statistical outlier removal — drop points whose neighbours are far away
+    # For each point, compute mean distance to its k nearest neighbours.
+    # Points with mean distance > (global_mean + 2*std) are outliers.
+    from scipy.spatial import cKDTree
+    print("  Running outlier removal...")
+    k = 16
+    tree = cKDTree(xyz)
+    dists, _ = tree.query(xyz, k=k + 1)   # k+1 because first result is the point itself
+    mean_dists = dists[:, 1:].mean(axis=1)
+    dist_threshold = mean_dists.mean() + 2.0 * mean_dists.std()
+    mask = mean_dists < dist_threshold
+    xyz, rgb = xyz[mask], rgb[mask]
+
+    print(f"  After outlier removal   : {len(xyz):,} points")
 
     # --- Save .ply ---
     save_ply(xyz, rgb, args.out)
