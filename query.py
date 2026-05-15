@@ -72,8 +72,9 @@ def visualise(
     """
     import rerun as rr
 
-    if save_rrd is not None and query_type == "object" and result is not None:
-        _visualise_6panel(scene, result, save_rrd, images_dir, scene_dir)
+    if (save_rrd is not None and query_type == "object" and result is not None
+            and images_dir is not None and scene_dir is not None):
+        _visualise_3panel(scene, result, save_rrd, images_dir, scene_dir)
         return
 
     rr.init("scene-query", spawn=False)
@@ -138,27 +139,19 @@ def visualise(
 
 
 # ---------------------------------------------------------------------------
-# Focused 6-panel object-query recording
+# Focused 3-panel object-query recording
 # ---------------------------------------------------------------------------
 
-def _visualise_6panel(
+def _visualise_3panel(
     scene: dict,
     result: dict,
     save_rrd: Path,
-    images_dir: Path | None,
-    scene_dir: Path | None,
+    images_dir: Path,
+    scene_dir: Path,
 ) -> None:
-    """2×3 panel recording focused on the queried object.
+    """3-panel recording, all views locked to the moving camera.
 
-    Top row (3D):
-      Panel 2 – full photo-coloured reconstruction + animated camera frustum
-      Panel 4 – grey scene + queried label in colour (no camera clutter)
-      Panel 5 – grey scene + queried label + bbox, viewport locked to camera
-
-    Bottom row (2D):
-      Panel 1 – RGB camera feed
-      Panel 3 – segmentation overlay (queried label highlighted, rest dimmed)
-      Panel 6 – placeholder (coming soon)
+      Camera feed  |  3D reconstruction (camera POV)  |  Segmentation overlay
     """
     import rerun as rr
     import rerun.blueprint as rrb
@@ -167,37 +160,15 @@ def _visualise_6panel(
     label  = result["label"]
     colour = _label_colour(label)
 
-    has_frames     = images_dir is not None and images_dir.exists()
-    has_intrinsics = (
-        scene_dir is not None and
-        (scene_dir / "intrinsics.npz").exists()
-    )
-
-    # --- Blueprint ---
-    cam = ["world/camera"]
-
-    panel2 = rrb.Spatial3DView(
-        name="Reconstruction",
-        contents=["world/photo"] + cam,
-    )
-    panel4 = rrb.Spatial3DView(
-        name=f"Query: {label}",
-        contents=["world/scene_bg", "world/query_pts"],
-    )
-    panel5 = rrb.Spatial3DView(
-        name=f"{label} — bbox",
-        contents=["world/scene_bg", "world/query_pts", "world/query_bbox", "world/camera"],
-        eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-    )
-    panel1 = rrb.Spatial2DView(name="RGB",          contents=["camera/rgb"])
-    panel3 = rrb.Spatial2DView(name="Segmentation", contents=["camera/segmentation"])
-    panel6 = rrb.TextDocumentView(name="—",         contents=["info/panel6"])
-
     blueprint = rrb.Blueprint(
-        rrb.Vertical(
-            rrb.Horizontal(panel2, panel4, panel5),
-            rrb.Horizontal(panel1, panel3, panel6),
-            row_shares=[3, 2],
+        rrb.Horizontal(
+            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+            rrb.Spatial3DView(
+                name="3D Reconstruction",
+                contents=["world/photo", "world/camera"],
+                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+            ),
+            rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
         ),
         collapse_panels=True,
         auto_views=False,
@@ -206,54 +177,22 @@ def _visualise_6panel(
     rr.init("scene-query", spawn=False, default_blueprint=blueprint)
     rr.save(str(save_rrd))
 
-    # --- Static: photo-coloured full point cloud (panel 2 background) ---
+    # Static: photo-coloured full point cloud for the 3D panel
     rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
     rr.log("world/photo", rr.Points3D(scene["xyz"], colors=rgb_u8, radii=0.003), static=True)
 
-    # --- Static: grey scene for context (panels 4 & 5) ---
-    bg = np.full((len(scene["xyz"]), 3), 65, dtype=np.uint8)
-    rr.log("world/scene_bg", rr.Points3D(scene["xyz"], colors=bg, radii=0.002), static=True)
-
-    # --- Static: queried label points, bright ---
+    # Queried label's 3D points — used for segmentation back-projection
     idxs = np.array(scene["label_index"][label], dtype=np.int64)
     pts  = scene["xyz"][idxs]
-    rr.log(
-        "world/query_pts",
-        rr.Points3D(pts, colors=np.tile(colour, (len(pts), 1)).astype(np.uint8), radii=0.005),
-        static=True,
-    )
 
-    # --- Static: tight bbox ---
-    rr.log(
-        "world/query_bbox",
-        rr.Boxes3D(
-            mins=[result["bbox_min"].tolist()],
-            sizes=[(result["bbox_max"] - result["bbox_min"]).tolist()],
-            colors=[colour],
-            labels=[label],
-        ),
-        static=True,
-    )
-
-    # --- Static: panel 6 placeholder ---
-    rr.log("info/panel6", rr.TextDocument("Panel 6 — coming soon."), static=True)
-
-    # --- Per-frame timeline ---
-    if not has_frames:
-        print(f"Saved -> {save_rrd}")
-        return
-
+    # Per-frame timeline
     from src.scene_query.geometry import load_frames_from_dir
     frames = load_frames_from_dir(images_dir)
 
-    intrinsics = None
-    image_size = None
-    if has_intrinsics:
-        intr       = np.load(scene_dir / "intrinsics.npz")
-        intrinsics = intr["intrinsics"]   # (N, 3, 3) at VGGT depth resolution
-        image_size = intr["image_size"]   # [H_d, W_d]
-
-    poses = scene.get("poses")
+    intr       = np.load(scene_dir / "intrinsics.npz")
+    intrinsics = intr["intrinsics"]   # (N, 3, 3) at VGGT depth resolution
+    image_size = intr["image_size"]   # [H_d, W_d]
+    poses      = scene["poses"]
 
     for i, frame in enumerate(frames):
         rr.set_time("frame", sequence=i)
@@ -261,30 +200,24 @@ def _visualise_6panel(
         # Panel 1: raw RGB
         rr.log("camera/rgb", rr.Image(frame))
 
-        if intrinsics is None or poses is None or i >= len(poses):
-            rr.log("camera/segmentation", rr.Image(frame))
-            continue
-
         pose = poses[i]
         K    = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
         H_d, W_d     = int(image_size[0]), int(image_size[1])
         H_orig, W_orig = frame.shape[:2]
         sx, sy = W_orig / W_d, H_orig / H_d
-        fx = float(K[0, 0]) * sx
-        fy = float(K[1, 1]) * sy
-        cx = float(K[0, 2]) * sx
-        cy = float(K[1, 2]) * sy
 
-        # Animated camera frustum (panels 2 & 5 see this)
-        rr.log(
-            "world/camera",
-            rr.Transform3D(translation=pose[:3, 3].tolist(), mat3x3=pose[:3, :3].tolist()),
-        )
-        rr.log(
-            "world/camera",
-            rr.Pinhole(focal_length=[fx, fy], principal_point=[cx, cy], width=W_orig, height=H_orig),
-        )
-        # Panel 3: segmentation — back-project 3D label points into this frame
+        # Panel 2: camera frustum in 3D — tracking_entity makes the view follow this
+        rr.log("world/camera", rr.Transform3D(
+            translation=pose[:3, 3].tolist(),
+            mat3x3=pose[:3, :3].tolist(),
+        ))
+        rr.log("world/camera", rr.Pinhole(
+            focal_length=[float(K[0, 0]) * sx, float(K[1, 1]) * sy],
+            principal_point=[float(K[0, 2]) * sx, float(K[1, 2]) * sy],
+            width=W_orig, height=H_orig,
+        ))
+
+        # Panel 3: segmentation overlay via density-map back-projection
         seg = _seg_overlay(frame, pts, pose, K, image_size, colour)
         rr.log("camera/segmentation", rr.Image(seg))
 
@@ -299,59 +232,55 @@ def _seg_overlay(
     image_size,
     colour: list[int],
 ) -> np.ndarray:
-    """Back-project world-space 3D label points into the frame as a colour mask.
+    """Back-project 3D label points into frame and return a colour overlay.
 
-    Steps:
-      1. Scale intrinsics from VGGT depth resolution → original frame resolution
-      2. Transform points world → camera space
-      3. Project to pixel coords; keep in-bounds, front-facing points
-      4. Rasterize + dilate to fill projection gaps
-      5. Blend: label region bright, rest dimmed
+    Uses a density-map approach: accumulate all projected point hits per pixel,
+    Gaussian-blur the density, then threshold. Much more filled than sparse
+    point + dilation because every one of the 500K+ label points contributes.
     """
     import cv2
 
-    H, W   = frame.shape[:2]
+    H, W     = frame.shape[:2]
     H_d, W_d = int(image_size[0]), int(image_size[1])
 
     K = K_vggt.astype(float).copy()
     K[0] *= W / W_d
     K[1] *= H / H_d
 
-    # World → camera
-    w2c    = np.linalg.inv(pose)
-    pts_h  = np.hstack([pts_world, np.ones((len(pts_world), 1))])
-    cam    = (w2c @ pts_h.T).T[:, :3]
+    # World → camera space
+    w2c   = np.linalg.inv(pose)
+    pts_h = np.hstack([pts_world, np.ones((len(pts_world), 1))])
+    cam   = (w2c @ pts_h.T).T[:, :3]
 
-    front  = cam[:, 2] > 0.01
-    cam    = cam[front]
+    # Keep only front-facing points
+    cam = cam[cam[:, 2] > 0.01]
     if len(cam) == 0:
         return frame.copy()
 
-    # Subsample so per-frame projection stays fast
-    if len(cam) > 60_000:
-        step = len(cam) // 60_000 + 1
-        cam  = cam[::step]
-
+    # Project to pixel coords (all points — density accuracy requires no subsampling)
     proj = (K @ cam.T).T
     px   = proj[:, 0] / proj[:, 2]
     py   = proj[:, 1] / proj[:, 2]
 
     valid = (px >= 0) & (px < W) & (py >= 0) & (py < H)
-    px_i  = np.clip(np.round(px[valid]).astype(np.int32), 0, W - 1)
-    py_i  = np.clip(np.round(py[valid]).astype(np.int32), 0, H - 1)
+    px_i  = np.round(px[valid]).astype(np.int32)
+    py_i  = np.round(py[valid]).astype(np.int32)
 
-    mask = np.zeros((H, W), dtype=np.uint8)
-    mask[py_i, px_i] = 255
-    # Aggressive dilation to fill gaps from sparse 3D→2D projection
-    mask = cv2.dilate(mask, np.ones((15, 15), np.uint8), iterations=4).astype(bool)
+    # Accumulate hit density per pixel, then blur to fill gaps
+    density = np.zeros((H, W), dtype=np.float32)
+    np.add.at(density, (py_i, px_i), 1.0)
+    density = cv2.GaussianBlur(density, (0, 0), sigmaX=7)
 
-    # Overlay: label region gets colour tint, rest stays visible but slightly muted
+    # Threshold + morphological close to seal any remaining holes
+    mask = (density > 0.05).astype(np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8))
+    mask = mask.astype(bool)
+
+    # Colour blend: label region bright, background lightly desaturated
     c       = np.array(colour, dtype=float)
     overlay = frame.astype(float)
-    overlay[mask] = overlay[mask] * 0.35 + c * 0.65
-    # Non-masked area stays close to original (just slight greyscale wash)
-    grey              = overlay[~mask].mean(axis=1, keepdims=True)
-    overlay[~mask]    = overlay[~mask] * 0.5 + grey * 0.5
+    overlay[mask]  = overlay[mask] * 0.3 + c * 0.7
+    overlay[~mask] = overlay[~mask] * 0.6 + 20          # visible but clearly dimmed
     return np.clip(overlay, 0, 255).astype(np.uint8)
 
 
