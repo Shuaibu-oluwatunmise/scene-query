@@ -174,8 +174,8 @@ def _visualise_3panel(
         auto_views=False,
     )
 
-    rr.init("scene-query", spawn=False, default_blueprint=blueprint)
-    rr.save(str(save_rrd))
+    rr.init("scene-query", spawn=False)
+    rr.save(str(save_rrd), default_blueprint=blueprint)
 
     # Static: photo-coloured full point cloud for the 3D panel
     rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
@@ -266,14 +266,15 @@ def _seg_overlay(
     px_i  = np.clip(np.round(px[valid]).astype(np.int32), 0, W - 1)
     py_i  = np.clip(np.round(py[valid]).astype(np.int32), 0, H - 1)
 
-    # Accumulate hit density per pixel, then blur to fill gaps
+    # Accumulate hit density per pixel, blur to fill small gaps, threshold
     density = np.zeros((H, W), dtype=np.float32)
     np.add.at(density, (py_i, px_i), 1.0)
-    density = cv2.GaussianBlur(density, (0, 0), sigmaX=7)
+    density = cv2.GaussianBlur(density, (0, 0), sigmaX=3)
 
-    # Threshold + morphological close to seal any remaining holes
-    mask = (density > 0.05).astype(np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((25, 25), np.uint8))
+    # Threshold at 1 hit (after blur ~0.5 keeps only real projections)
+    mask = (density > 0.5).astype(np.uint8)
+    # Small closing to seal holes inside the object silhouette
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
     mask = mask.astype(bool)
 
     # Colour blend: label region bright, background lightly desaturated
