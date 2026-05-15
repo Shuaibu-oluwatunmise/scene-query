@@ -18,7 +18,8 @@ env/
 Thumbs.db
 
 # Model checkpoints (downloaded fresh per env)
-checkpoints/
+checkpoints/*
+!checkpoints/README.md
 weights/
 *.pt
 *.pth
