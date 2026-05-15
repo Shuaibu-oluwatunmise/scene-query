@@ -65,11 +65,19 @@ def query_object(scene: dict, label: str) -> dict:
     idxs = np.array(label_index[matched], dtype=np.int64)
     pts  = scene["xyz"][idxs]
 
+    # Trim per-axis outliers (5th–95th percentile) before computing bbox.
+    # Raw min/max blows up when a handful of noisy depth pixels land far
+    # from the true object — a common artefact at mask boundaries.
+    lo = np.percentile(pts, 5,  axis=0)
+    hi = np.percentile(pts, 95, axis=0)
+    inlier_mask = np.all((pts >= lo) & (pts <= hi), axis=1)
+    pts_clean   = pts[inlier_mask] if inlier_mask.any() else pts
+
     return {
         "label":      matched,
-        "centroid":   pts.mean(axis=0).astype(np.float32),
-        "bbox_min":   pts.min(axis=0).astype(np.float32),
-        "bbox_max":   pts.max(axis=0).astype(np.float32),
+        "centroid":   pts_clean.mean(axis=0).astype(np.float32),
+        "bbox_min":   pts_clean.min(axis=0).astype(np.float32),
+        "bbox_max":   pts_clean.max(axis=0).astype(np.float32),
         "n_points":   len(idxs),
         "confidence": float(scene["confidence"][idxs].mean()),
         "indices":    idxs,
