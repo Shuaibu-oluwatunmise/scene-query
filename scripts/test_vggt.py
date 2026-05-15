@@ -34,7 +34,7 @@ DEFAULT_OUT = REPO_ROOT / "outputs" / "vggt_test.ply"
 # raw.githubusercontent.com serves the actual file content (needed for download)
 EXAMPLE_IMAGE_URLS = [
     f"https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/{i:02d}.png"
-    for i in range(1, 25)
+    for i in range(0, 25)
 ]
 
 
@@ -140,7 +140,7 @@ def main() -> None:
     conf = conf.reshape(-1)
 
     # Keep only high-confidence points to keep .ply file manageable
-    threshold = np.percentile(conf, 50)  # top 50% by confidence
+    threshold = np.percentile(conf, 10)  # drop only the bottom 10%
     mask = conf > threshold
     xyz, rgb = xyz[mask], rgb[mask]
 
