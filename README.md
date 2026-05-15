@@ -66,16 +66,40 @@ python query.py <dir> --free-space [--floor-z <metres>]
 python query.py <dir> --reachable-from <x> <y> <z> [--reach 0.7]
 ```
 
-## Requirements
+## Getting started
 
-- Python 3.10+, PyTorch 2.1+, CUDA 11.8+ (tested: RTX 6000 Ada, CUDA 12.4)
-- [VGGT](https://github.com/facebookresearch/vggt) — follow their install instructions, download weights
-- [Grounded-SAM-2](https://github.com/IDEA-Research/Grounded-SAM-2) — follow their install instructions, download weights
-- `rerun-sdk numpy opencv-python scipy pillow`
+**Requirements:** Python 3.10+, CUDA-capable GPU (tested: RTX 6000 Ada, CUDA 12.4)
 
 ```bash
-pip install rerun-sdk numpy opencv-python scipy pillow
-# Then install VGGT and Grounded-SAM-2 per their respective READMEs
+# 1. Clone
+git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
+cd scene-query
+
+# 2. Install PyTorch (pick the right CUDA version for your machine)
+#    https://pytorch.org/get-started/locally/
+#    e.g. pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# 3. Install everything else
+pip install -r requirements.txt
+
+# 4. Download VGGT (installs package + weights, ~2 GB)
+python scripts/download_vggt.py
+
+# 5. Download Grounded-SAM-2 models (~3.5 GB total)
+python scripts/download_sam2.py
+python scripts/download_grounding_dino.py
+#    Also install Grounded-SAM-2 from source:
+#    https://github.com/IDEA-Research/Grounded-SAM-2
+
+# 6. Run
+python reconstruct.py examples/room_test.mp4 --out outputs/room/
+python query.py outputs/room/ "find the chair"
+```
+
+On RunPod or any machine with a persistent volume, pass `--dir` to keep weights
+out of the repo and on the volume:
+```bash
+python scripts/download_vggt.py --dir /workspace/checkpoints/vggt
 ```
 
 ## Repository layout
