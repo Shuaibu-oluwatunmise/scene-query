@@ -14,12 +14,27 @@ _SAM2_WEIGHTS  = _REPO_ROOT / "checkpoints" / "sam2" / "sam2.1_hiera_large.pt"
 _SAM2_CONFIG   = "configs/sam2.1/sam2.1_hiera_l.yaml"
 
 
-def load_models(device: str = "cuda") -> tuple:
+def load_models(
+    device: str = "cuda",
+    weights_gdino: Path | None = None,
+    weights_sam2: Path | None = None,
+) -> tuple:
     """Load Grounding DINO + SAM 2.1; return (grounding_model, sam_model).
 
-    Weights are read from checkpoints/grounding_dino/ and checkpoints/sam2/.
-    Run scripts/download_grounding_dino.py and scripts/download_sam2.py first.
+    Parameters
+    ----------
+    weights_gdino : directory containing groundingdino_swint_ogc.pth + config
+                    (default: <repo>/checkpoints/grounding_dino/)
+    weights_sam2  : directory containing sam2.1_hiera_large.pt
+                    (default: <repo>/checkpoints/sam2/)
     """
+    gdino_dir = Path(weights_gdino) if weights_gdino else _GDINO_WEIGHTS.parent
+    sam2_dir  = Path(weights_sam2)  if weights_sam2  else _SAM2_WEIGHTS.parent
+
+    gdino_weights = gdino_dir / "groundingdino_swint_ogc.pth"
+    gdino_config  = gdino_dir / "GroundingDINO_SwinT_OGC.py"
+    sam2_weights  = sam2_dir  / "sam2.1_hiera_large.pt"
+
     try:
         from groundingdino.util.inference import load_model as _load_gdino
     except ImportError:
@@ -35,7 +50,7 @@ def load_models(device: str = "cuda") -> tuple:
             "Install Grounded-SAM-2 from: https://github.com/IDEA-Research/Grounded-SAM-2"
         )
 
-    for path in [_GDINO_WEIGHTS, _GDINO_CONFIG, _SAM2_WEIGHTS]:
+    for path in [gdino_weights, gdino_config, sam2_weights]:
         if not path.exists():
             raise FileNotFoundError(
                 f"Weights not found: {path}\n"
@@ -44,10 +59,10 @@ def load_models(device: str = "cuda") -> tuple:
                 "  python scripts/download_grounding_dino.py"
             )
 
-    grounding_model = _load_gdino(str(_GDINO_CONFIG), str(_GDINO_WEIGHTS), device=device)
+    grounding_model = _load_gdino(str(gdino_config), str(gdino_weights), device=device)
     grounding_model = grounding_model.to(device).eval()
 
-    sam_model = build_sam2(_SAM2_CONFIG, str(_SAM2_WEIGHTS), device=device)
+    sam_model = build_sam2(_SAM2_CONFIG, str(sam2_weights), device=device)
 
     return grounding_model, sam_model
 

@@ -26,6 +26,10 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--weights-vggt", type=Path, default=Path("checkpoints/vggt"),
                    help="VGGT weights directory")
+    p.add_argument("--weights-gdino", type=Path, default=None,
+                   help="Grounding DINO weights directory (default: checkpoints/grounding_dino/)")
+    p.add_argument("--weights-sam2", type=Path, default=None,
+                   help="SAM 2.1 weights directory (default: checkpoints/sam2/)")
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--geometry-only", action="store_true",
                    help="Run VGGT only — skip semantics and lifting. Saves raw point cloud as .ply.")
@@ -58,7 +62,11 @@ def main() -> None:
 
     # --- Semantics (Grounded-SAM-2) ---
     print(f"\nRunning Grounded-SAM-2 for: {labels}...")
-    grounding_model, sam_model = load_models(args.device)
+    grounding_model, sam_model = load_models(
+        args.device,
+        weights_gdino=args.weights_gdino,
+        weights_sam2=args.weights_sam2,
+    )
     masks_per_frame = segment_frames(
         frames, labels, grounding_model, sam_model, args.device
     )
