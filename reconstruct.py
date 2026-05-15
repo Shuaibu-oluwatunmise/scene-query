@@ -119,8 +119,39 @@ def _save_rrd(
     import cv2
     import numpy as np
     import rerun as rr
+    import rerun.blueprint as rrb
 
-    rr.init("scene-query", spawn=False)
+    blueprint = rrb.Blueprint(
+        rrb.Vertical(
+            # Top row: three 3D views
+            rrb.Horizontal(
+                rrb.Spatial3DView(
+                    name="Original",
+                    contents=["world/photo_colours", "world/camera", "world/camera/**"],
+                ),
+                rrb.Spatial3DView(
+                    name="Process — semantics",
+                    contents=["world/label_colours", "world/labels/**",
+                              "world/camera", "world/camera/**"],
+                ),
+                rrb.Spatial3DView(
+                    name="Result — objects",
+                    contents=["world/photo_colours", "world/bboxes/**",
+                              "world/camera", "world/camera/**"],
+                ),
+            ),
+            # Bottom row: 2D camera feed + segmentation overlay
+            rrb.Horizontal(
+                rrb.Spatial2DView(name="Camera feed",    contents=["camera/rgb"]),
+                rrb.Spatial2DView(name="Segmentation",   contents=["camera/segmentation"]),
+            ),
+            row_shares=[3, 2],
+        ),
+        collapse_panels=True,
+        auto_views=False,
+    )
+
+    rr.init("scene-query", spawn=False, default_blueprint=blueprint)
     rr.save(str(rrd_path))
 
     H_d, W_d = geometry["image_size"]   # VGGT depth resolution
