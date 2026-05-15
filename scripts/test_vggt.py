@@ -34,7 +34,7 @@ DEFAULT_OUT = REPO_ROOT / "outputs" / "vggt_test.ply"
 # raw.githubusercontent.com serves the actual file content (needed for download)
 EXAMPLE_IMAGE_URLS = [
     f"https://raw.githubusercontent.com/facebookresearch/vggt/main/examples/kitchen/images/{i:02d}.png"
-    for i in range(1, 9)
+    for i in range(1, 25)
 ]
 
 
