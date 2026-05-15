@@ -44,8 +44,7 @@ def load_models(device: str = "cuda") -> tuple:
                 "  python scripts/download_grounding_dino.py"
             )
 
-    cpu_only = device == "cpu"
-    grounding_model = _load_gdino(str(_GDINO_CONFIG), str(_GDINO_WEIGHTS), cpu_only=cpu_only)
+    grounding_model = _load_gdino(str(_GDINO_CONFIG), str(_GDINO_WEIGHTS), device=device)
     grounding_model = grounding_model.to(device).eval()
 
     sam_model = build_sam2(_SAM2_CONFIG, str(_SAM2_WEIGHTS), device=device)
