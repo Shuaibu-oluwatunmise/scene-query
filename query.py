@@ -263,8 +263,8 @@ def _seg_overlay(
     py   = proj[:, 1] / proj[:, 2]
 
     valid = (px >= 0) & (px < W) & (py >= 0) & (py < H)
-    px_i  = np.round(px[valid]).astype(np.int32)
-    py_i  = np.round(py[valid]).astype(np.int32)
+    px_i  = np.clip(np.round(px[valid]).astype(np.int32), 0, W - 1)
+    py_i  = np.clip(np.round(py[valid]).astype(np.int32), 0, H - 1)
 
     # Accumulate hit density per pixel, then blur to fill gaps
     density = np.zeros((H, W), dtype=np.float32)
