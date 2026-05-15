@@ -1,0 +1,22 @@
+# PyTorch — install separately with the right CUDA version:
+#   https://pytorch.org/get-started/locally/
+#   e.g. pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# Core
+numpy>=1.24
+scipy>=1.11
+opencv-python>=4.8
+pillow>=10.0
+tqdm>=4.65
+
+# Visualisation
+rerun-sdk>=0.18
+
+# VGGT — install from source:
+#   pip install git+https://github.com/facebookresearch/vggt.git
+#   (downloads weights automatically on first use via HuggingFace)
+
+# Grounded-SAM-2 — install from source:
+#   git clone https://github.com/IDEA-Research/Grounded-SAM-2 && cd Grounded-SAM-2
+#   pip install -e .
+#   (then download weights per their README into checkpoints/)
