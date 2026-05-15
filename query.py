@@ -13,21 +13,13 @@ from src.scene_query.query_engine import (
     query_reachable,
 )
 
-# One colour per semantic label — matches the PLY export palette
-_PALETTE: dict[str, list[int]] = {
-    "bulldozer": [255, 120,  30],
-    "table":     [ 80, 200,  80],
-    "wheel":     [200,  50,  50],
-    "blade":     [ 50, 150, 255],
-    "track":     [200, 200,  50],
-    "chair":     [180,  60, 220],
-    "sofa":      [220, 160,  60],
-    "door":      [100, 200, 220],
-    "window":    [220, 220, 100],
-    "bed":       [160,  80, 160],
-    "desk":      [100, 160,  60],
-}
-_DEFAULT_COLOUR = [160, 160, 160]
+def _label_colour(label: str) -> list[int]:
+    """Deterministic, visually distinct colour for any label string."""
+    import hashlib
+    import colorsys
+    h = int(hashlib.md5(label.encode()).hexdigest(), 16)
+    r, g, b = colorsys.hsv_to_rgb((h % 360) / 360.0, 0.75, 0.95)
+    return [int(r * 255), int(g * 255), int(b * 255)]
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,10 +45,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def _label_colours(scene: dict) -> np.ndarray:
-    return np.array(
-        [_PALETTE.get(str(l), _DEFAULT_COLOUR) for l in scene["label"]],
-        dtype=np.uint8,
-    )
+    return np.array([_label_colour(str(l)) for l in scene["label"]], dtype=np.uint8)
 
 
 def visualise(
@@ -89,7 +78,7 @@ def visualise(
     # Per-label sub-entities so the viewer blueprint can toggle each label
     for lbl, idxs in scene["label_index"].items():
         idx_arr = np.array(idxs, dtype=np.int64)
-        colour  = _PALETTE.get(lbl, _DEFAULT_COLOUR)
+        colour  = _label_colour(lbl)
         rr.log(
             f"world/labels/{lbl}",
             rr.Points3D(

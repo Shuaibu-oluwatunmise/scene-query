@@ -8,21 +8,15 @@ from src.scene_query.geometry import extract_frames, load_frames_from_dir, load_
 from src.scene_query.lift import lift_masks, save_scene
 from src.scene_query.semantics import load_models, segment_frames
 
-# Colour palette shared with query.py
-_PALETTE: dict[str, list[int]] = {
-    "bulldozer": [255, 120,  30],
-    "table":     [ 80, 200,  80],
-    "wheel":     [200,  50,  50],
-    "blade":     [ 50, 150, 255],
-    "track":     [200, 200,  50],
-    "chair":     [180,  60, 220],
-    "sofa":      [220, 160,  60],
-    "door":      [100, 200, 220],
-    "window":    [220, 220, 100],
-    "bed":       [160,  80, 160],
-    "desk":      [100, 160,  60],
-}
-_DEFAULT_COLOUR = [160, 160, 160]
+def _label_colour(label: str) -> list[int]:
+    """Deterministic, visually distinct colour for any label string."""
+    import hashlib
+    h = int(hashlib.md5(label.encode()).hexdigest(), 16)
+    # Pick hue from hash, keep saturation and value high for visibility
+    import colorsys
+    hue = (h % 360) / 360.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.75, 0.95)
+    return [int(r * 255), int(g * 255), int(b * 255)]
 
 
 def parse_args() -> argparse.Namespace:
@@ -133,7 +127,7 @@ def _save_rrd(
 
     # --- Static: labelled 3-D point cloud ---
     label_colours = np.array(
-        [_PALETTE.get(str(l), _DEFAULT_COLOUR) for l in scene["label"]],
+        [_label_colour(str(l)) for l in scene["label"]],
         dtype=np.uint8,
     )
     # Build label -> indices from the in-memory label array
@@ -153,7 +147,7 @@ def _save_rrd(
     # Per-label sub-clouds (toggleable in the entity panel)
     for lbl, idxs in label_index.items():
         idx_arr = np.array(idxs, dtype=np.int64)
-        colour  = _PALETTE.get(lbl, _DEFAULT_COLOUR)
+        colour  = _label_colour(lbl)
         pts     = scene["xyz"][idx_arr]
         rr.log(
             f"world/labels/{lbl}",
@@ -194,7 +188,7 @@ def _save_rrd(
         overlay = frame.astype(float)
         for det in masks_per_frame[i]:
             mask = det["mask"]          # (H_orig, W_orig) bool from SAM 2
-            colour = np.array(_PALETTE.get(det["label"], _DEFAULT_COLOUR), dtype=float)
+            colour = np.array(_label_colour(det["label"]), dtype=float)
             overlay[mask] = overlay[mask] * 0.35 + colour * 0.65
         rr.log("camera/segmentation", rr.Image(overlay.astype(np.uint8)))
 
