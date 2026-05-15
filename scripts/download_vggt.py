@@ -1,31 +1,39 @@
 """
 Install VGGT and download its weights.
 
-Run this once on the pod. It handles everything — no separate pip install needed.
+Run this once before using reconstruct.py. Handles everything — no separate
+pip install needed.
 
 Usage:
-    python scripts/download_vggt.py
+    python scripts/download_vggt.py                        # default path
+    python scripts/download_vggt.py --dir /custom/path     # custom weights dir
+    python scripts/download_vggt.py --skip-weights         # install only, no download
 
-What it does:
-    1. pip installs the VGGT package from GitHub
-    2. Downloads the VGGT weights from HuggingFace (~2 GB)
-       and saves them to /workspace/checkpoints/vggt/ (persistent volume)
-
-Output:
-    /workspace/checkpoints/vggt/   <- weights land here
+Default weights location: <repo>/checkpoints/vggt/
+On RunPod, pass --dir /workspace/checkpoints/vggt to keep weights on the
+persistent volume so they survive pod restarts.
 """
 
+import argparse
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-CHECKPOINT_DIR = Path("/workspace/checkpoints/vggt")
+REPO_ROOT = Path(__file__).parent.parent
+DEFAULT_DIR = REPO_ROOT / "checkpoints" / "vggt"
 HF_MODEL_ID = "facebook/vggt"
 VGGT_REPO = "git+https://github.com/facebookresearch/vggt.git"
 
 
-def install_vggt():
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--dir", type=Path, default=DEFAULT_DIR, help="Where to save weights")
+    p.add_argument("--skip-weights", action="store_true", help="Install package only, skip weight download")
+    return p.parse_args()
+
+
+def install_vggt() -> None:
     print("Step 1/2 — Installing VGGT package...")
     result = subprocess.run(
         [sys.executable, "-m", "pip", "install", VGGT_REPO],
@@ -37,11 +45,11 @@ def install_vggt():
     print("VGGT package installed.\n")
 
 
-def download_weights():
+def download_weights(checkpoint_dir: Path) -> None:
     print("Step 2/2 — Downloading VGGT weights from HuggingFace...")
     print(f"  Model : {HF_MODEL_ID}")
-    print(f"  Dest  : {CHECKPOINT_DIR}")
-    print("  Size  : ~2 GB — takes 2-5 minutes on the pod\n")
+    print(f"  Dest  : {checkpoint_dir}")
+    print("  Size  : ~2 GB — takes 2-5 minutes on a fast connection\n")
 
     try:
         from huggingface_hub import snapshot_download
@@ -50,29 +58,33 @@ def download_weights():
         subprocess.run([sys.executable, "-m", "pip", "install", "huggingface_hub"], check=True)
         from huggingface_hub import snapshot_download
 
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    # Keep HF cache on the persistent volume, not the container disk
-    os.environ["HF_HOME"] = "/workspace/checkpoints/.hf_cache"
+    # Keep HF cache alongside the weights so nothing lands in a hidden ~/.cache
+    os.environ["HF_HOME"] = str(checkpoint_dir.parent / ".hf_cache")
 
     snapshot_download(
         repo_id=HF_MODEL_ID,
-        local_dir=str(CHECKPOINT_DIR),
+        local_dir=str(checkpoint_dir),
         local_dir_use_symlinks=False,
     )
 
-    print(f"\nWeights saved to {CHECKPOINT_DIR}/")
+    print(f"\nWeights saved to {checkpoint_dir}/")
     print("Files:")
-    for f in sorted(CHECKPOINT_DIR.rglob("*")):
+    for f in sorted(checkpoint_dir.rglob("*")):
         if f.is_file():
             size_mb = f.stat().st_size / 1e6
-            print(f"  {f.relative_to(CHECKPOINT_DIR)}  ({size_mb:.0f} MB)")
+            print(f"  {f.relative_to(checkpoint_dir)}  ({size_mb:.0f} MB)")
 
 
-def main():
+def main() -> None:
+    args = parse_args()
     install_vggt()
-    download_weights()
-    print("\nAll done. VGGT is ready.")
+    if args.skip_weights:
+        print("--skip-weights set. Done (no weights downloaded).")
+    else:
+        download_weights(args.dir)
+        print("\nAll done. VGGT is ready.")
 
 
 if __name__ == "__main__":
