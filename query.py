@@ -117,7 +117,7 @@ def visualise(
                 "world/query/bbox",
                 rr.Boxes3D(
                     mins=[result["bbox_min"].tolist()],
-                    maxs=[result["bbox_max"].tolist()],
+                    sizes=[(result["bbox_max"] - result["bbox_min"]).tolist()],
                     colors=[[255, 255, 0]],
                     labels=[result["label"]],
                 ),
@@ -143,7 +143,7 @@ def visualise(
                     f"world/query/reachable/{r['label']}",
                     rr.Boxes3D(
                         mins=[r["bbox_min"].tolist()],
-                        maxs=[r["bbox_max"].tolist()],
+                        sizes=[(r["bbox_max"] - r["bbox_min"]).tolist()],
                         colors=[[255, 200, 0]],
                         labels=[r["label"]],
                     ),
