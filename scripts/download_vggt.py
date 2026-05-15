@@ -22,7 +22,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 DEFAULT_DIR = REPO_ROOT / "checkpoints" / "vggt"
-HF_MODEL_ID = "facebook/vggt"
+HF_MODEL_ID = "facebook/VGGT-1B"
 VGGT_REPO = "git+https://github.com/facebookresearch/vggt.git"
 
 

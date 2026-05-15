@@ -71,11 +71,15 @@ def save_ply(xyz: np.ndarray, rgb: np.ndarray, path: Path) -> None:
         "end_header\n"
     )
     rgb_uint8 = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
+    # Build as a structured numpy array and write in one shot — avoids per-row Python loops
+    dtype = np.dtype([("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
+                      ("red", "u1"), ("green", "u1"), ("blue", "u1")])
+    data = np.empty(n, dtype=dtype)
+    data["x"], data["y"], data["z"] = xyz[:, 0], xyz[:, 1], xyz[:, 2]
+    data["red"], data["green"], data["blue"] = rgb_uint8[:, 0], rgb_uint8[:, 1], rgb_uint8[:, 2]
     with open(path, "wb") as f:
         f.write(header.encode())
-        for i in range(n):
-            f.write(struct.pack("<fffBBB", xyz[i, 0], xyz[i, 1], xyz[i, 2],
-                                rgb_uint8[i, 0], rgb_uint8[i, 1], rgb_uint8[i, 2]))
+        f.write(data.tobytes())
 
 
 def main() -> None:
@@ -114,35 +118,33 @@ def main() -> None:
     print("Inference done.\n")
 
     # --- Extract point cloud ---
-    # VGGT returns world-space points and per-point colours
-    # Key names may vary — print what we got if something's wrong
+    # world_points: [B, S, H, W, 3] — one 3D point per pixel per frame
+    # world_points_conf: [B, S, H, W] — confidence per point
+    # images: [B, S, 3, H, W] — original frames, used for colour
     print("Predictions keys:", list(predictions.keys()))
+    for k, v in predictions.items():
+        if hasattr(v, "shape"):
+            print(f"  {k}: {v.shape}")
 
-    # Try common key names
-    xyz_key = next((k for k in predictions if "point" in k.lower() or "xyz" in k.lower() or "world" in k.lower()), None)
+    # XYZ: drop batch dim, flatten (S, H, W, 3) → (S*H*W, 3)
+    xyz = predictions["world_points"][0].cpu().float().numpy()   # (S, H, W, 3)
+    conf = predictions["world_points_conf"][0].cpu().float().numpy()  # (S, H, W)
 
-    if xyz_key is None:
-        print("\nCould not find point cloud key automatically. Available keys:")
-        for k, v in predictions.items():
-            shape = v.shape if hasattr(v, "shape") else type(v)
-            print(f"  {k}: {shape}")
-        print("\nCheck the keys above and re-run with the right key name.")
-        sys.exit(0)
+    # Colour: images are (B, S, 3, H, W) → (S, H, W, 3)
+    imgs = predictions["images"][0].cpu().float().numpy()        # (S, 3, H, W)
+    imgs = imgs.transpose(0, 2, 3, 1)                           # (S, H, W, 3)
 
-    xyz = predictions[xyz_key].squeeze().cpu().numpy()
-    if xyz.ndim == 3:
-        xyz = xyz.reshape(-1, 3)
+    # Flatten everything
+    xyz = xyz.reshape(-1, 3)
+    rgb = imgs.reshape(-1, 3)
+    conf = conf.reshape(-1)
 
-    # Try to find colour
-    rgb_key = next((k for k in predictions if "color" in k.lower() or "rgb" in k.lower()), None)
-    if rgb_key is not None:
-        rgb = predictions[rgb_key].squeeze().cpu().numpy()
-        if rgb.ndim == 3:
-            rgb = rgb.reshape(-1, 3)
-    else:
-        rgb = np.ones_like(xyz) * 0.7  # grey fallback
+    # Keep only high-confidence points to keep .ply file manageable
+    threshold = np.percentile(conf, 50)  # top 50% by confidence
+    mask = conf > threshold
+    xyz, rgb = xyz[mask], rgb[mask]
 
-    print(f"Point cloud: {len(xyz):,} points")
+    print(f"Point cloud: {len(xyz):,} points (after confidence filtering)")
 
     # --- Save .ply ---
     save_ply(xyz, rgb, args.out)
