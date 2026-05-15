@@ -208,7 +208,7 @@ def _save_rrd(
 
     # --- Per-frame timeline ---
     for i, frame in enumerate(frames):
-        rr.set_time_sequence("frame", i)
+        rr.set_time("frame", sequence=i)
 
         H_orig, W_orig = frame.shape[:2]
 
