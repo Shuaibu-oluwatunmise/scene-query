@@ -136,23 +136,47 @@ def _save_rrd(
         [_PALETTE.get(str(l), _DEFAULT_COLOUR) for l in scene["label"]],
         dtype=np.uint8,
     )
-    rr.log("world/scene", rr.Points3D(scene["xyz"], colors=label_colours, radii=0.003),
-           static=True)
-
     # Build label -> indices from the in-memory label array
     label_index: dict[str, list[int]] = {}
     for idx, lbl in enumerate(scene["label"]):
         label_index.setdefault(str(lbl), []).append(idx)
 
+    # Original photo colours — shows the scene as it actually looks
+    rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
+    rr.log("world/photo_colours", rr.Points3D(scene["xyz"], colors=rgb_u8, radii=0.003),
+           static=True)
+
+    # Semantic label colours — one colour per object class
+    rr.log("world/label_colours", rr.Points3D(scene["xyz"], colors=label_colours, radii=0.003),
+           static=True)
+
+    # Per-label sub-clouds (toggleable in the entity panel)
     for lbl, idxs in label_index.items():
         idx_arr = np.array(idxs, dtype=np.int64)
         colour  = _PALETTE.get(lbl, _DEFAULT_COLOUR)
+        pts     = scene["xyz"][idx_arr]
         rr.log(
             f"world/labels/{lbl}",
             rr.Points3D(
-                scene["xyz"][idx_arr],
+                pts,
                 colors=np.tile(colour, (len(idx_arr), 1)).astype(np.uint8),
                 radii=0.003,
+            ),
+            static=True,
+        )
+
+        # Tight bounding box per label (5th–95th percentile, no outlier blow-up)
+        lo = np.percentile(pts, 5,  axis=0)
+        hi = np.percentile(pts, 95, axis=0)
+        inliers   = np.all((pts >= lo) & (pts <= hi), axis=1)
+        pts_clean = pts[inliers] if inliers.any() else pts
+        rr.log(
+            f"world/bboxes/{lbl}",
+            rr.Boxes3D(
+                mins=[pts_clean.min(axis=0).tolist()],
+                sizes=[(pts_clean.max(axis=0) - pts_clean.min(axis=0)).tolist()],
+                colors=[colour],
+                labels=[lbl],
             ),
             static=True,
         )
