@@ -139,7 +139,12 @@ def _save_rrd(
     rr.log("world/scene", rr.Points3D(scene["xyz"], colors=label_colours, radii=0.003),
            static=True)
 
-    for lbl, idxs in scene["label_index"].items():
+    # Build label -> indices from the in-memory label array
+    label_index: dict[str, list[int]] = {}
+    for idx, lbl in enumerate(scene["label"]):
+        label_index.setdefault(str(lbl), []).append(idx)
+
+    for lbl, idxs in label_index.items():
         idx_arr = np.array(idxs, dtype=np.int64)
         colour  = _PALETTE.get(lbl, _DEFAULT_COLOUR)
         rr.log(
