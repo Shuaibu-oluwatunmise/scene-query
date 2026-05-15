@@ -41,6 +41,25 @@ def extract_frames(video_path: str | Path, fps: float = 5.0) -> list[np.ndarray]
     return frames
 
 
+def load_frames_from_dir(images_dir: str | Path) -> list[np.ndarray]:
+    """Load all images from a directory, sorted by filename. Returns RGB uint8 (H, W, 3).
+
+    Accepts .png, .jpg, .jpeg. Use this instead of extract_frames when your
+    input is a folder of images rather than a video file.
+    """
+    images_dir = Path(images_dir)
+    exts = {".png", ".jpg", ".jpeg"}
+    paths = sorted(p for p in images_dir.iterdir() if p.suffix.lower() in exts)
+    if not paths:
+        raise FileNotFoundError(f"No images found in {images_dir}")
+    frames = []
+    for p in paths:
+        img = Image.open(p).convert("RGB")
+        frames.append(np.array(img))
+    print(f"  Loaded {len(frames)} images from {images_dir}")
+    return frames
+
+
 def _preprocess_frames(frames: list[np.ndarray]) -> torch.Tensor:
     """Resize frames to VGGT's expected input size and convert to tensor.
 
