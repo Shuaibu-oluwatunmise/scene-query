@@ -174,7 +174,7 @@ def _visualise_6panel(
     )
 
     # --- Blueprint ---
-    cam = ["world/camera", "world/camera/**"]
+    cam = ["world/camera"]
 
     panel2 = rrb.Spatial3DView(
         name="Reconstruction",
@@ -186,7 +186,7 @@ def _visualise_6panel(
     )
     panel5 = rrb.Spatial3DView(
         name=f"{label} — bbox",
-        contents=["world/scene_bg", "world/query_pts", "world/query_bbox"] + cam,
+        contents=["world/scene_bg", "world/query_pts", "world/query_bbox", "world/camera"],
         eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
     )
     panel1 = rrb.Spatial2DView(name="RGB",          contents=["camera/rgb"])
@@ -284,8 +284,6 @@ def _visualise_6panel(
             "world/camera",
             rr.Pinhole(focal_length=[fx, fy], principal_point=[cx, cy], width=W_orig, height=H_orig),
         )
-        rr.log("world/camera/image", rr.Image(frame))
-
         # Panel 3: segmentation — back-project 3D label points into this frame
         seg = _seg_overlay(frame, pts, pose, K, image_size, colour)
         rr.log("camera/segmentation", rr.Image(seg))
@@ -344,12 +342,16 @@ def _seg_overlay(
 
     mask = np.zeros((H, W), dtype=np.uint8)
     mask[py_i, px_i] = 255
-    mask = cv2.dilate(mask, np.ones((9, 9), np.uint8), iterations=3).astype(bool)
+    # Aggressive dilation to fill gaps from sparse 3D→2D projection
+    mask = cv2.dilate(mask, np.ones((15, 15), np.uint8), iterations=4).astype(bool)
 
+    # Overlay: label region gets colour tint, rest stays visible but slightly muted
     c       = np.array(colour, dtype=float)
     overlay = frame.astype(float)
-    overlay[mask]  = overlay[mask]  * 0.25 + c * 0.75
-    overlay[~mask] = overlay[~mask] * 0.4
+    overlay[mask] = overlay[mask] * 0.35 + c * 0.65
+    # Non-masked area stays close to original (just slight greyscale wash)
+    grey              = overlay[~mask].mean(axis=1, keepdims=True)
+    overlay[~mask]    = overlay[~mask] * 0.5 + grey * 0.5
     return np.clip(overlay, 0, 255).astype(np.uint8)
 
 
