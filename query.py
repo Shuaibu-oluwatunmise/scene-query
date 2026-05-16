@@ -161,20 +161,22 @@ def _visualise_focused(
     label  = result["label"]
     colour = _label_colour(label)
 
-    # --- Plan-view camera position ---
-    # Average the Y-axis of each camera-to-world matrix to find world "up",
-    # then place the eye above the scene centre along that direction.
-    poses_arr = scene["poses"]                          # (N, 4, 4)
-    up = poses_arr[:, :3, 1].mean(axis=0)              # avg cam-Y in world space
-    up = up / (np.linalg.norm(up) + 1e-8)
-    centre = scene["xyz"].mean(axis=0)
-    extent = float(np.linalg.norm(
-        scene["xyz"].max(axis=0) - scene["xyz"].min(axis=0)
-    ))
-    plan_eye    = (centre + up * extent * 1.2).tolist()
-    plan_target = centre.tolist()
+    poses_arr = scene["poses"]   # (N, 4, 4)
+
+    # Starting eye for panels 4 & 5: first camera pose
+    # Column 3 = position, column 2 = forward, column 1 = up (in world space)
+    cam0      = poses_arr[0]
+    cam0_pos  = cam0[:3, 3].tolist()
+    cam0_fwd  = (cam0[:3, 3] + cam0[:3, 2]).tolist()   # one unit forward
+    cam0_up   = cam0[:3, 1].tolist()
 
     bg = [20, 20, 20]
+
+    first_cam_eye = ba.EyeControls3D(
+        position=cam0_pos,
+        look_target=cam0_fwd,
+        eye_up=cam0_up,
+    )
 
     blueprint = rrb.Blueprint(
         rrb.Vertical(
@@ -189,20 +191,18 @@ def _visualise_focused(
                 ),
                 rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
             ),
-            # Bottom row: static overview panels
+            # Bottom row: static overview panels, both start from first camera POV
             rrb.Horizontal(
                 rrb.Spatial3DView(
                     name=f"Objects — {label}",
                     contents=["world/scene_bg", "world/query_pts"],
+                    eye_controls=first_cam_eye,
                     background=bg,
                 ),
                 rrb.Spatial3DView(
-                    name="Plan view",
-                    contents=["world/scene_bg", "world/query_bbox"],
-                    eye_controls=ba.EyeControls3D(
-                        position=plan_eye,
-                        look_target=plan_target,
-                    ),
+                    name=f"{label} — bbox",
+                    contents=["world/photo", "world/query_bbox"],
+                    eye_controls=first_cam_eye,
                     background=bg,
                 ),
             ),
@@ -217,33 +217,39 @@ def _visualise_focused(
     rr.send_blueprint(blueprint, make_active=True, make_default=True)
 
     # --- Static entities ---
-    xyz   = scene["xyz"]
+    xyz    = scene["xyz"]
     rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
 
-    # Panel 2 background: photo colours
+    # Photo-coloured cloud (panels 2 & 5)
     rr.log("world/photo", rr.Points3D(
         xyz, colors=rgb_u8, radii=rr.Radius.ui_points(1.5)
     ), static=True)
 
-    # Panels 4 & 5 background: uniform grey
+    # Grey cloud for panel 4 context
     grey = np.full((len(xyz), 3), 65, dtype=np.uint8)
     rr.log("world/scene_bg", rr.Points3D(
         xyz, colors=grey, radii=rr.Radius.ui_points(1.0)
     ), static=True)
 
-    # Panel 4: queried label in colour, slightly larger so it pops
+    # All points belonging to the queried label
     idxs = np.array(scene["label_index"][label], dtype=np.int64)
     pts  = scene["xyz"][idxs]
+
+    # Panel 4: only show points inside the (percentile-trimmed) bbox — removes outliers
+    bbox_min = result["bbox_min"]
+    bbox_max = result["bbox_max"]
+    in_bbox  = np.all((pts >= bbox_min) & (pts <= bbox_max), axis=1)
+    pts_clean = pts[in_bbox]
     rr.log("world/query_pts", rr.Points3D(
-        pts,
-        colors=np.tile(colour, (len(pts), 1)).astype(np.uint8),
+        pts_clean,
+        colors=np.tile(colour, (len(pts_clean), 1)).astype(np.uint8),
         radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
-    # Panel 5: tight bbox
+    # Panel 5: tight bbox over photo-coloured scene
     rr.log("world/query_bbox", rr.Boxes3D(
-        mins=[result["bbox_min"].tolist()],
-        sizes=[(result["bbox_max"] - result["bbox_min"]).tolist()],
+        mins=[bbox_min.tolist()],
+        sizes=[(bbox_max - bbox_min).tolist()],
         colors=[colour],
         labels=[label],
     ), static=True)
