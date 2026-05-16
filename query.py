@@ -74,7 +74,7 @@ def visualise(
 
     if (save_rrd is not None and query_type == "object" and result is not None
             and images_dir is not None and scene_dir is not None):
-        _visualise_3panel(scene, result, save_rrd, images_dir, scene_dir)
+        _visualise_focused(scene, result, save_rrd, images_dir, scene_dir)
         return
 
     rr.init("scene-query", spawn=False)
@@ -139,19 +139,20 @@ def visualise(
 
 
 # ---------------------------------------------------------------------------
-# Focused 3-panel object-query recording
+# Focused 5-panel object-query recording
 # ---------------------------------------------------------------------------
 
-def _visualise_3panel(
+def _visualise_focused(
     scene: dict,
     result: dict,
     save_rrd: Path,
     images_dir: Path,
     scene_dir: Path,
 ) -> None:
-    """3-panel recording, all views locked to the moving camera.
+    """5-panel recording.
 
-      Camera feed  |  3D reconstruction (camera POV)  |  Segmentation overlay
+    Top row  (timeline):  Camera feed | 3D reconstruction (cam-locked) | Segmentation
+    Bottom row (static):  Grey 3D + queried label coloured | Plan view with bbox
     """
     import rerun as rr
     import rerun.blueprint as rrb
@@ -160,16 +161,52 @@ def _visualise_3panel(
     label  = result["label"]
     colour = _label_colour(label)
 
+    # --- Plan-view camera position ---
+    # Average the Y-axis of each camera-to-world matrix to find world "up",
+    # then place the eye above the scene centre along that direction.
+    poses_arr = scene["poses"]                          # (N, 4, 4)
+    up = poses_arr[:, :3, 1].mean(axis=0)              # avg cam-Y in world space
+    up = up / (np.linalg.norm(up) + 1e-8)
+    centre = scene["xyz"].mean(axis=0)
+    extent = float(np.linalg.norm(
+        scene["xyz"].max(axis=0) - scene["xyz"].min(axis=0)
+    ))
+    plan_eye    = (centre + up * extent * 1.2).tolist()
+    plan_target = centre.tolist()
+
+    bg = [20, 20, 20]
+
     blueprint = rrb.Blueprint(
-        rrb.Horizontal(
-            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
-            rrb.Spatial3DView(
-                name="3D Reconstruction",
-                contents=["world/photo", "world/camera"],
-                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                background=[20, 20, 20],
+        rrb.Vertical(
+            # Top row: timeline-driven panels
+            rrb.Horizontal(
+                rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+                rrb.Spatial3DView(
+                    name="3D Reconstruction",
+                    contents=["world/photo", "world/camera"],
+                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                    background=bg,
+                ),
+                rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
             ),
-            rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
+            # Bottom row: static overview panels
+            rrb.Horizontal(
+                rrb.Spatial3DView(
+                    name=f"Objects — {label}",
+                    contents=["world/scene_bg", "world/query_pts"],
+                    background=bg,
+                ),
+                rrb.Spatial3DView(
+                    name="Plan view",
+                    contents=["world/scene_bg", "world/query_bbox"],
+                    eye_controls=ba.EyeControls3D(
+                        position=plan_eye,
+                        look_target=plan_target,
+                    ),
+                    background=bg,
+                ),
+            ),
+            row_shares=[3, 2],
         ),
         collapse_panels=True,
         auto_views=False,
@@ -179,39 +216,57 @@ def _visualise_3panel(
     rr.save(str(save_rrd))
     rr.send_blueprint(blueprint, make_active=True, make_default=True)
 
-    # Static: photo-coloured full point cloud for the 3D panel
-    # ui_points radii = pixel-scaled (negative value) — stays solid at all zoom levels
+    # --- Static entities ---
+    xyz   = scene["xyz"]
     rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
+
+    # Panel 2 background: photo colours
     rr.log("world/photo", rr.Points3D(
-        scene["xyz"], colors=rgb_u8, radii=rr.Radius.ui_points(1.5)
+        xyz, colors=rgb_u8, radii=rr.Radius.ui_points(1.5)
     ), static=True)
 
-    # Queried label's 3D points — used for segmentation back-projection
+    # Panels 4 & 5 background: uniform grey
+    grey = np.full((len(xyz), 3), 65, dtype=np.uint8)
+    rr.log("world/scene_bg", rr.Points3D(
+        xyz, colors=grey, radii=rr.Radius.ui_points(1.0)
+    ), static=True)
+
+    # Panel 4: queried label in colour, slightly larger so it pops
     idxs = np.array(scene["label_index"][label], dtype=np.int64)
     pts  = scene["xyz"][idxs]
+    rr.log("world/query_pts", rr.Points3D(
+        pts,
+        colors=np.tile(colour, (len(pts), 1)).astype(np.uint8),
+        radii=rr.Radius.ui_points(2.0),
+    ), static=True)
 
-    # Per-frame timeline
+    # Panel 5: tight bbox
+    rr.log("world/query_bbox", rr.Boxes3D(
+        mins=[result["bbox_min"].tolist()],
+        sizes=[(result["bbox_max"] - result["bbox_min"]).tolist()],
+        colors=[colour],
+        labels=[label],
+    ), static=True)
+
+    # --- Per-frame timeline (top row) ---
     from src.scene_query.geometry import load_frames_from_dir
     frames = load_frames_from_dir(images_dir)
 
     intr       = np.load(scene_dir / "intrinsics.npz")
-    intrinsics = intr["intrinsics"]   # (N, 3, 3) at VGGT depth resolution
-    image_size = intr["image_size"]   # [H_d, W_d]
-    poses      = scene["poses"]
+    intrinsics = intr["intrinsics"]
+    image_size = intr["image_size"]
 
     for i, frame in enumerate(frames):
         rr.set_time("frame", sequence=i)
 
-        # Panel 1: raw RGB
         rr.log("camera/rgb", rr.Image(frame))
 
-        pose = poses[i]
+        pose = poses_arr[i]
         K    = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
-        H_d, W_d     = int(image_size[0]), int(image_size[1])
+        H_d, W_d       = int(image_size[0]), int(image_size[1])
         H_orig, W_orig = frame.shape[:2]
         sx, sy = W_orig / W_d, H_orig / H_d
 
-        # Panel 2: camera frustum in 3D — tracking_entity makes the view follow this
         rr.log("world/camera", rr.Transform3D(
             translation=pose[:3, 3].tolist(),
             mat3x3=pose[:3, :3].tolist(),
@@ -222,7 +277,6 @@ def _visualise_3panel(
             width=W_orig, height=H_orig,
         ))
 
-        # Panel 3: segmentation overlay via density-map back-projection
         seg = _seg_overlay(frame, pts, pose, K, image_size, colour)
         rr.log("camera/segmentation", rr.Image(seg))
 
