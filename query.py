@@ -175,7 +175,8 @@ def _visualise_3panel(
     )
 
     rr.init("scene-query", spawn=False)
-    rr.save(str(save_rrd), default_blueprint=blueprint)
+    rr.save(str(save_rrd))
+    rr.send_blueprint(blueprint, make_active=True, make_default=True)
 
     # Static: photo-coloured full point cloud for the 3D panel
     rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
