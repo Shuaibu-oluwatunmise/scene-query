@@ -4,27 +4,117 @@
 
 Most reconstruction pipelines produce a point cloud or a Gaussian splat — a rendering artefact. This project produces something a humanoid robot can actually use: a *scene memory* where objects have labels, space has structure, and you can ask questions.
 
+Built for Humanoid's Perception & Spatial AI internship challenge. See [docs/design_note.md](docs/design_note.md) for the full rationale.
+
+---
+
+## Quick start
+
+### Prerequisites
+
+- Python 3.10+
+- CUDA GPU with **16 GB+ VRAM** (tested: RTX 6000 Ada 48 GB, CUDA 12.4)
+
+### 1. Clone
+
 ```bash
-# Reconstruct from your own video — label whatever is in your scene
+git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
+cd scene-query
+```
+
+### 2. Install PyTorch
+
+Install the version matching your CUDA driver — check with `nvidia-smi` (CUDA version in top-right corner):
+
+```bash
+# CUDA 12.4 example — pick yours at https://pytorch.org/get-started/locally/
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Download model weights
+
+```bash
+# VGGT — geometry model (~2 GB)
+python scripts/download_vggt.py
+
+# SAM 2.1 + Grounding DINO — segmentation models (~3.5 GB)
+python scripts/download_sam2.py
+python scripts/download_grounding_dino.py
+```
+
+### 5. Install Grounded-SAM-2 from source
+
+```bash
+git clone --depth=1 https://github.com/IDEA-Research/Grounded-SAM-2.git /tmp/gsam2
+pip install -e /tmp/gsam2
+pip install --no-build-isolation -e /tmp/gsam2/grounding_dino
+
+# Make it importable
+python -c "
+import site, pathlib
+pth = pathlib.Path(site.getsitepackages()[0]) / 'grounded_sam2.pth'
+pth.write_text('/tmp/gsam2\n')
+print('Written:', pth)
+"
+```
+
+### 6. Run
+
+**Option A — your own video:**
+
+```bash
+# Reconstruct: label whatever objects are in your scene
 python reconstruct.py --video myvideo.mp4 --out outputs/myscene/ \
     --labels "table,chair,monitor,keyboard"
 
-# Query an object and save a 5-panel Rerun recording
+# Query an object and generate the 5-panel Rerun recording
 python query.py outputs/myscene/ "find the table" --save-rrd outputs/table.rrd
 
-# View it
+# View
 python -m rerun outputs/table.rrd
 ```
 
-Or use the included example images to try it immediately:
+**Option B — included test images** (25 tabletop images, no download needed):
 
 ```bash
-python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
+python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/ \
+    --labels "table,chair,mug"
+
 python query.py outputs/tabletop/ "find the table" --save-rrd outputs/table.rrd
+
 python -m rerun outputs/table.rrd
 ```
 
-Built for Humanoid's Perception & Spatial AI internship challenge. See [docs/design_note.md](docs/design_note.md) for the full rationale.
+> A test video will be added to `examples/` shortly for an out-of-the-box video demo.
+
+---
+
+## What you'll see in Rerun
+
+A 5-panel layout focused on your queried object:
+
+```
+┌──────────────────┬──────────────────┬──────────────────┐
+│  Camera feed     │  3D view through │  Segmentation    │
+│  (timeline)      │  moving camera   │  overlay         │
+│                  │  (timeline)      │  (timeline)      │
+├────────────────────────┬────────────────────────────────┤
+│  Grey scene +          │  Photo-coloured scene +        │
+│  queried label         │  tight bounding box            │
+│  highlighted (static)  │  (static)                      │
+└────────────────────────┴────────────────────────────────┘
+```
+
+- **Top row** — scrub through frames: original feed, 3D reconstruction locked to the camera, back-projected segmentation mask
+- **Bottom row** — free-orbit static views: label points highlighted against the grey scene (left), bounding box over the photo-coloured scene (right). Both start from the first camera frame's point of view.
+
+---
 
 ## Pipeline
 
@@ -50,13 +140,15 @@ Images or video
       │
       ▼
   Query engine + Rerun visualisation
-  "find the chair" → 3D bounding region + centroid
+  "find the table" → 3D bounding region + centroid
 ```
+
+---
 
 ## Output format
 
 ```
-outputs/room/
+outputs/myscene/
 ├── pointcloud.npz     # XYZ, RGB, label (str), confidence (float), per point
 ├── poses.npz          # camera-to-world 4x4 matrices, one per frame
 ├── intrinsics.npz     # camera intrinsics (per frame) + VGGT image_size
@@ -65,135 +157,40 @@ outputs/room/
 └── frames/            # extracted frames (only when input was --video)
 ```
 
-## Usage
+---
+
+## All query types
 
 ```bash
-# Reconstruct from a directory of images
-python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
+# Find a specific object
+python query.py outputs/myscene/ "find the chair"
 
-# Reconstruct from a video file
-python reconstruct.py --video scene.mp4 --out outputs/tabletop/ [--fps 5]
+# Navigable floor space
+python query.py outputs/myscene/ --free-space --floor-z 0.0
 
-# Specify object labels (default: chair,table,sofa,door,window,bed,desk)
-python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/ --labels "chair,table,door"
-
-# Also save a Rerun recording of the full reconstruction pipeline
-python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/ --save-rrd outputs/tabletop.rrd
-
-# Query by object name
-python query.py outputs/tabletop/ "find the chair"
-
-# Query for navigable free space
-python query.py outputs/tabletop/ --free-space [--floor-z <metres>]
-
-# Query for objects reachable from a robot base position
-python query.py outputs/tabletop/ --reachable-from <x> <y> <z> [--reach 0.7]
-
-# Save a focused 5-panel Rerun recording for an object query
-# (if reconstructed from --images, pass --images here too)
-python query.py outputs/tabletop/ "find the chair" \
-    --save-rrd outputs/chair_query.rrd \
-    --images examples/tabletop/
-
-# If you reconstructed from --video, frames are saved automatically to
-# outputs/tabletop/frames/ and query.py picks them up with no extra flags:
-python query.py outputs/tabletop/ "find the chair" --save-rrd outputs/chair_query.rrd
+# Objects within arm reach of a robot base position
+python query.py outputs/myscene/ --reachable-from 0.0 0.0 0.9 --reach 0.7
 ```
 
-## Rerun Visualisation
+---
 
-Two Rerun recordings can be generated:
+## On RunPod or persistent GPU machines
 
-**Reconstruction recording** (`reconstruct.py --save-rrd`): shows the full pipeline — original frames, semantic segmentation overlay, camera trajectory, and the labelled 3D point cloud with per-object bounding boxes. Useful for inspecting reconstruction quality and segmentation accuracy.
+Pass `--dir` to keep weights on the volume so they survive pod restarts:
 
-**Focused query recording** (`query.py --save-rrd --images`): a 5-panel layout built around the queried object.
-
-```
-┌──────────────────┬──────────────────┬──────────────────┐
-│  Camera feed     │  3D (cam-locked) │  Segmentation    │
-│  (timeline)      │  (timeline)      │  overlay         │
-│                  │                  │  (timeline)      │
-├──────────────────┴──────────────────┴──────────────────┤
-│  row_shares=[3, 2]                                      │
-├────────────────────────┬────────────────────────────────┤
-│  Grey scene +          │  Photo-coloured scene +        │
-│  queried label         │  tight bounding box            │
-│  highlighted (static)  │  (static)                      │
-└────────────────────────┴────────────────────────────────┘
-```
-
-- **Panel 1** — Original RGB frames on a scrubable timeline
-- **Panel 2** — 3D point cloud viewed *through* the moving camera (tracking_entity lock)
-- **Panel 3** — Back-projected segmentation: all 3D label points projected into each frame, density-smoothed and thresholded to produce a filled 2D mask overlay
-- **Panel 4** — Static grey scene with only the queried label's points coloured; outlier points outside the bounding box are suppressed
-- **Panel 5** — Static photo-coloured scene with the percentile-trimmed bounding box overlaid
-
-Both panels 4 and 5 start from the first camera frame's point of view (free-orbit from there).
-
-To open a recording in the Rerun viewer:
-
-```bash
-# Local viewer
-py -3.12 -m rerun outputs/chair_query.rrd
-
-# Or load from a remote machine after SCP
-scp root@<pod-ip>:<pod-path>/chair_query.rrd .
-py -3.12 -m rerun chair_query.rrd
-```
-
-## Getting started
-
-**Requirements:** Python 3.10+, CUDA GPU with 16 GB+ VRAM (tested: RTX 6000 Ada 48 GB, CUDA 12.4)
-
-```bash
-# 1. Clone — example images are included, no separate download needed
-git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
-cd scene-query
-
-# 2. Install PyTorch with the right CUDA version for your machine
-#    https://pytorch.org/get-started/locally/
-#    e.g. pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-
-# 3. Install everything else
-pip install -r requirements.txt
-
-# 4. Download VGGT (installs package + weights, ~2 GB)
-python scripts/download_vggt.py
-
-# 5. Download Grounded-SAM-2 models and install from source (~3.5 GB)
-python scripts/download_sam2.py
-python scripts/download_grounding_dino.py
-
-#    Clone Grounded-SAM-2 and install both sub-packages:
-git clone --depth=1 https://github.com/IDEA-Research/Grounded-SAM-2.git /tmp/gsam2
-pip install -e /tmp/gsam2
-pip install --no-build-isolation -e /tmp/gsam2/grounding_dino
-
-#    Make grounded_sam2 importable as a top-level package:
-python -c "
-import site, pathlib
-pth = pathlib.Path(site.getsitepackages()[0]) / 'grounded_sam2.pth'
-pth.write_text('/tmp/gsam2\n')
-print('Written:', pth)
-"
-
-# 6. Run on the included tabletop images
-python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
-python query.py outputs/tabletop/ "find the chair"
-```
-
-**On RunPod or any machine with a persistent volume**, pass `--dir` to keep
-weights on the volume so they survive pod restarts:
 ```bash
 python scripts/download_vggt.py --dir /workspace/checkpoints/vggt
 python scripts/download_sam2.py --dir /workspace/checkpoints/sam2
 python scripts/download_grounding_dino.py --dir /workspace/checkpoints/grounding_dino
 ```
 
-After a pod migration, restore the environment in one command:
+After a pod migration, restore the full environment in one command:
+
 ```bash
 bash scripts/setup_pod.sh
 ```
+
+---
 
 ## Repository layout
 
