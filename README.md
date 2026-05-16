@@ -52,6 +52,7 @@ Images or video
 outputs/room/
 ├── pointcloud.npz     # XYZ, RGB, label (str), confidence (float), per point
 ├── poses.npz          # camera-to-world 4x4 matrices, one per frame
+├── intrinsics.npz     # camera intrinsics (per frame) + VGGT image_size
 ├── depth/             # per-frame metric depth maps (.npy)
 └── labels.json        # label -> point-index list, for fast lookup
 ```
@@ -68,6 +69,9 @@ python reconstruct.py --video scene.mp4 --out outputs/tabletop/ [--fps 5]
 # Specify object labels (default: chair,table,sofa,door,window,bed,desk)
 python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/ --labels "chair,table,door"
 
+# Also save a Rerun recording of the full reconstruction pipeline
+python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/ --save-rrd outputs/tabletop.rrd
+
 # Query by object name
 python query.py outputs/tabletop/ "find the chair"
 
@@ -76,6 +80,52 @@ python query.py outputs/tabletop/ --free-space [--floor-z <metres>]
 
 # Query for objects reachable from a robot base position
 python query.py outputs/tabletop/ --reachable-from <x> <y> <z> [--reach 0.7]
+
+# Save a focused 5-panel Rerun recording for an object query
+python query.py outputs/tabletop/ "find the chair" \
+    --save-rrd outputs/chair_query.rrd \
+    --images examples/tabletop/
+```
+
+## Rerun Visualisation
+
+Two Rerun recordings can be generated:
+
+**Reconstruction recording** (`reconstruct.py --save-rrd`): shows the full pipeline — original frames, semantic segmentation overlay, camera trajectory, and the labelled 3D point cloud with per-object bounding boxes. Useful for inspecting reconstruction quality and segmentation accuracy.
+
+**Focused query recording** (`query.py --save-rrd --images`): a 5-panel layout built around the queried object.
+
+```
+┌──────────────────┬──────────────────┬──────────────────┐
+│  Camera feed     │  3D (cam-locked) │  Segmentation    │
+│  (timeline)      │  (timeline)      │  overlay         │
+│                  │                  │  (timeline)      │
+├──────────────────┴──────────────────┴──────────────────┤
+│  row_shares=[3, 2]                                      │
+├────────────────────────┬────────────────────────────────┤
+│  Grey scene +          │  Photo-coloured scene +        │
+│  queried label         │  tight bounding box            │
+│  highlighted (static)  │  (static)                      │
+└────────────────────────┴────────────────────────────────┘
+```
+
+- **Panel 1** — Original RGB frames on a scrubable timeline
+- **Panel 2** — 3D point cloud viewed *through* the moving camera (tracking_entity lock)
+- **Panel 3** — Back-projected segmentation: all 3D label points projected into each frame, density-smoothed and thresholded to produce a filled 2D mask overlay
+- **Panel 4** — Static grey scene with only the queried label's points coloured; outlier points outside the bounding box are suppressed
+- **Panel 5** — Static photo-coloured scene with the percentile-trimmed bounding box overlaid
+
+Both panels 4 and 5 start from the first camera frame's point of view (free-orbit from there).
+
+To open a recording in the Rerun viewer:
+
+```bash
+# Local viewer
+py -3.12 -m rerun outputs/chair_query.rrd
+
+# Or load from a remote machine after SCP
+scp root@<pod-ip>:<pod-path>/chair_query.rrd .
+py -3.12 -m rerun chair_query.rrd
 ```
 
 ## Getting started
@@ -97,11 +147,17 @@ pip install -r requirements.txt
 # 4. Download VGGT (installs package + weights, ~2 GB)
 python scripts/download_vggt.py
 
-# 5. Download Grounded-SAM-2 models (~3.5 GB total)
+# 5. Download Grounded-SAM-2 models and install from source
 python scripts/download_sam2.py
 python scripts/download_grounding_dino.py
-#    Also install Grounded-SAM-2 from source:
-#    https://github.com/IDEA-Research/Grounded-SAM-2
+
+#    Clone and install Grounded-SAM-2:
+git clone https://github.com/IDEA-Research/Grounded-SAM-2.git /tmp/gsam2
+pip install -e /tmp/gsam2
+
+#    Make grounded_sam2 importable as a top-level package:
+python -c "import site; print(site.getsitepackages()[0])" \
+    | xargs -I{} bash -c 'echo "/tmp/gsam2" > {}/gsam2_src.pth'
 
 # 6. Run on the included tabletop images
 python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
