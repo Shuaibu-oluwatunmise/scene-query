@@ -130,7 +130,7 @@ py -3.12 -m rerun chair_query.rrd
 
 ## Getting started
 
-**Requirements:** Python 3.10+, CUDA-capable GPU (tested: RTX 6000 Ada, CUDA 12.4)
+**Requirements:** Python 3.10+, CUDA GPU with 16 GB+ VRAM (tested: RTX 6000 Ada 48 GB, CUDA 12.4)
 
 ```bash
 # 1. Clone — example images are included, no separate download needed
@@ -147,17 +147,22 @@ pip install -r requirements.txt
 # 4. Download VGGT (installs package + weights, ~2 GB)
 python scripts/download_vggt.py
 
-# 5. Download Grounded-SAM-2 models and install from source
+# 5. Download Grounded-SAM-2 models and install from source (~3.5 GB)
 python scripts/download_sam2.py
 python scripts/download_grounding_dino.py
 
-#    Clone and install Grounded-SAM-2:
-git clone https://github.com/IDEA-Research/Grounded-SAM-2.git /tmp/gsam2
+#    Clone Grounded-SAM-2 and install both sub-packages:
+git clone --depth=1 https://github.com/IDEA-Research/Grounded-SAM-2.git /tmp/gsam2
 pip install -e /tmp/gsam2
+pip install --no-build-isolation -e /tmp/gsam2/grounding_dino
 
 #    Make grounded_sam2 importable as a top-level package:
-python -c "import site; print(site.getsitepackages()[0])" \
-    | xargs -I{} bash -c 'echo "/tmp/gsam2" > {}/gsam2_src.pth'
+python -c "
+import site, pathlib
+pth = pathlib.Path(site.getsitepackages()[0]) / 'grounded_sam2.pth'
+pth.write_text('/tmp/gsam2\n')
+print('Written:', pth)
+"
 
 # 6. Run on the included tabletop images
 python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
