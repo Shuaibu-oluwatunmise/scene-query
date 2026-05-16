@@ -167,6 +167,7 @@ def _visualise_3panel(
                 name="3D Reconstruction",
                 contents=["world/photo", "world/camera"],
                 eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                background=[20, 20, 20],
             ),
             rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
         ),
@@ -179,8 +180,11 @@ def _visualise_3panel(
     rr.send_blueprint(blueprint, make_active=True, make_default=True)
 
     # Static: photo-coloured full point cloud for the 3D panel
+    # ui_points radii = pixel-scaled (negative value) — stays solid at all zoom levels
     rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
-    rr.log("world/photo", rr.Points3D(scene["xyz"], colors=rgb_u8, radii=0.003), static=True)
+    rr.log("world/photo", rr.Points3D(
+        scene["xyz"], colors=rgb_u8, radii=rr.Radius.ui_points(1.5)
+    ), static=True)
 
     # Queried label's 3D points — used for segmentation back-projection
     idxs = np.array(scene["label_index"][label], dtype=np.int64)
