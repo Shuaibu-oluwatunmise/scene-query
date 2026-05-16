@@ -168,7 +168,7 @@ def _visualise_focused(
     cam0      = poses_arr[0]
     cam0_pos  = cam0[:3, 3].tolist()
     cam0_fwd  = (cam0[:3, 3] + cam0[:3, 2]).tolist()   # one unit forward
-    cam0_up   = cam0[:3, 1].tolist()
+    cam0_up   = (-cam0[:3, 1]).tolist()                 # negate: OpenCV Y points down
 
     bg = [20, 20, 20]
 
