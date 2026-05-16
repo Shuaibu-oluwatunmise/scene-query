@@ -42,3 +42,6 @@ outputs/
 *.log
 runs/
 wandb/
+
+# Local planning docs
+future_improvement.md
