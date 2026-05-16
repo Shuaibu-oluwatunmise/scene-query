@@ -5,16 +5,23 @@
 Most reconstruction pipelines produce a point cloud or a Gaussian splat — a rendering artefact. This project produces something a humanoid robot can actually use: a *scene memory* where objects have labels, space has structure, and you can ask questions.
 
 ```bash
-# Run on the included example images
+# Reconstruct from your own video — label whatever is in your scene
+python reconstruct.py --video myvideo.mp4 --out outputs/myscene/ \
+    --labels "table,chair,monitor,keyboard"
+
+# Query an object and save a 5-panel Rerun recording
+python query.py outputs/myscene/ "find the table" --save-rrd outputs/table.rrd
+
+# View it
+python -m rerun outputs/table.rrd
+```
+
+Or use the included example images to try it immediately:
+
+```bash
 python reconstruct.py --images examples/tabletop/ --out outputs/tabletop/
-
-# Or on your own video
-python reconstruct.py --video path/to/video.mp4 --out outputs/tabletop/
-
-# Query the scene
-python query.py outputs/tabletop/ "find the chair"
-python query.py outputs/tabletop/ --free-space --floor-z 0.0
-python query.py outputs/tabletop/ --reachable-from 0.0 0.0 0.9
+python query.py outputs/tabletop/ "find the table" --save-rrd outputs/table.rrd
+python -m rerun outputs/table.rrd
 ```
 
 Built for Humanoid's Perception & Spatial AI internship challenge. See [docs/design_note.md](docs/design_note.md) for the full rationale.
