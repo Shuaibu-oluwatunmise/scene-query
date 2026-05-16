@@ -54,7 +54,8 @@ outputs/room/
 ├── poses.npz          # camera-to-world 4x4 matrices, one per frame
 ├── intrinsics.npz     # camera intrinsics (per frame) + VGGT image_size
 ├── depth/             # per-frame metric depth maps (.npy)
-└── labels.json        # label -> point-index list, for fast lookup
+├── labels.json        # label -> point-index list, for fast lookup
+└── frames/            # extracted frames (only when input was --video)
 ```
 
 ## Usage
@@ -82,9 +83,14 @@ python query.py outputs/tabletop/ --free-space [--floor-z <metres>]
 python query.py outputs/tabletop/ --reachable-from <x> <y> <z> [--reach 0.7]
 
 # Save a focused 5-panel Rerun recording for an object query
+# (if reconstructed from --images, pass --images here too)
 python query.py outputs/tabletop/ "find the chair" \
     --save-rrd outputs/chair_query.rrd \
     --images examples/tabletop/
+
+# If you reconstructed from --video, frames are saved automatically to
+# outputs/tabletop/frames/ and query.py picks them up with no extra flags:
+python query.py outputs/tabletop/ "find the chair" --save-rrd outputs/chair_query.rrd
 ```
 
 ## Rerun Visualisation

@@ -384,12 +384,17 @@ def main() -> None:
         print(f"Confidence : {result['confidence']:.2f}")
 
     if not args.no_vis:
+        images_dir = args.images
+        if images_dir is None:
+            candidate = args.scene_dir / "frames"
+            if candidate.is_dir():
+                images_dir = candidate
         visualise(
             scene,
             result,
             query_type,
             save_rrd=args.save_rrd,
-            images_dir=args.images,
+            images_dir=images_dir,
             scene_dir=args.scene_dir,
         )
 

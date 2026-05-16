@@ -48,6 +48,14 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _save_frames(frames: list, frames_dir: Path) -> None:
+    import cv2
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    for i, frame in enumerate(frames):
+        cv2.imwrite(str(frames_dir / f"{i:04d}.png"), cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+    print(f"  Frames saved -> {frames_dir}/")
+
+
 def main() -> None:
     args = parse_args()
     labels = [l.strip() for l in args.labels.split(",")]
@@ -59,6 +67,7 @@ def main() -> None:
     else:
         print(f"Extracting frames at {args.fps} fps from {args.video}...")
         frames = extract_frames(args.video, fps=args.fps)
+        _save_frames(frames, args.out / "frames")
     print(f"  {len(frames)} frames ready")
 
     # --- Geometry (VGGT) ---
