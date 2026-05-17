@@ -103,7 +103,9 @@ def query_object(scene: dict, label: str) -> dict:
     horiz2 = np.cross(up, horiz1)
     horiz2 /= np.linalg.norm(horiz2)
 
-    R = np.stack([horiz1, up, horiz2], axis=1).astype(np.float32)  # cols = OBB axes
+    R = np.stack([horiz1, up, horiz2], axis=1).astype(np.float32)
+    if np.linalg.det(R) < 0:
+        R[:, 2] = -R[:, 2]  # ensure right-handed frame
     projected = centered @ R
     proj_center = (projected.max(axis=0) + projected.min(axis=0)) / 2
     obb_center  = (center + R @ proj_center).astype(np.float32)
