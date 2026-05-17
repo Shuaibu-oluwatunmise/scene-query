@@ -82,14 +82,28 @@ def query_object(scene: dict, label: str) -> dict:
     inlier_mask = np.all((pts >= lo) & (pts <= hi), axis=1)
     pts_clean   = pts[inlier_mask] if inlier_mask.any() else pts
 
+    center = pts_clean.mean(axis=0).astype(np.float32)
+
+    # Oriented bounding box via PCA
+    from scipy.spatial.transform import Rotation
+    centered = pts_clean - center
+    _, eigenvectors = np.linalg.eigh(np.cov(centered.T))
+    eigenvectors = eigenvectors[:, ::-1]          # descending variance order
+    projected    = centered @ eigenvectors
+    obb_half     = ((projected.max(axis=0) - projected.min(axis=0)) / 2).astype(np.float32)
+    obb_quat     = Rotation.from_matrix(eigenvectors).as_quat().astype(np.float32)  # xyzw
+
     return {
-        "label":      matched,
-        "centroid":   pts_clean.mean(axis=0).astype(np.float32),
-        "bbox_min":   pts_clean.min(axis=0).astype(np.float32),
-        "bbox_max":   pts_clean.max(axis=0).astype(np.float32),
-        "n_points":   len(idxs),
-        "confidence": float(scene["confidence"][idxs].mean()),
-        "indices":    idxs,
+        "label":        matched,
+        "centroid":     center,
+        "bbox_min":     pts_clean.min(axis=0).astype(np.float32),
+        "bbox_max":     pts_clean.max(axis=0).astype(np.float32),
+        "obb_center":   center,
+        "obb_half":     obb_half,
+        "obb_quat":     obb_quat,
+        "n_points":     len(idxs),
+        "confidence":   float(scene["confidence"][idxs].mean()),
+        "indices":      idxs,
     }
 
 

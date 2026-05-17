@@ -110,8 +110,9 @@ def visualise(
             rr.log(
                 "world/query/bbox",
                 rr.Boxes3D(
-                    mins=[result["bbox_min"].tolist()],
-                    sizes=[(result["bbox_max"] - result["bbox_min"]).tolist()],
+                    centers=[result["obb_center"].tolist()],
+                    half_sizes=[result["obb_half"].tolist()],
+                    quaternions=[rr.Quaternion(xyzw=result["obb_quat"].tolist())],
                     colors=[[255, 255, 0]],
                     labels=[result["label"]],
                 ),
@@ -250,10 +251,11 @@ def _visualise_focused(
         radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
-    # Panel 5: tight bbox over photo-coloured scene
+    # Panel 5: OBB over photo-coloured scene
     rr.log("world/query_bbox", rr.Boxes3D(
-        mins=[bbox_min.tolist()],
-        sizes=[(bbox_max - bbox_min).tolist()],
+        centers=[result["obb_center"].tolist()],
+        half_sizes=[result["obb_half"].tolist()],
+        quaternions=[rr.Quaternion(xyzw=result["obb_quat"].tolist())],
         colors=[colour],
         labels=[label],
     ), static=True)
