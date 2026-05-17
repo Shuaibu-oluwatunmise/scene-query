@@ -83,22 +83,39 @@ def query_object(scene: dict, label: str) -> dict:
     pts_clean   = pts[inlier_mask] if inlier_mask.any() else pts
 
     center = pts_clean.mean(axis=0).astype(np.float32)
-
-    # Oriented bounding box via PCA
-    from scipy.spatial.transform import Rotation
     centered = pts_clean - center
-    _, eigenvectors = np.linalg.eigh(np.cov(centered.T))
-    eigenvectors = eigenvectors[:, ::-1]          # descending variance order
-    projected    = centered @ eigenvectors
-    obb_half     = ((projected.max(axis=0) - projected.min(axis=0)) / 2).astype(np.float32)
-    obb_quat     = Rotation.from_matrix(eigenvectors).as_quat().astype(np.float32)  # xyzw
+
+    # Upright OBB: PCA only in horizontal plane, vertical axis from camera poses.
+    # Full 3D PCA picks up depth noise and tilts the box — constraining to yaw-only
+    # rotation gives a box that sits flat and aligns with the object's footprint.
+    from scipy.spatial.transform import Rotation
+
+    poses_arr = scene["poses"]
+    up = (-poses_arr[:, :3, 1]).mean(axis=0)   # avg camera up (negate OpenCV Y-down)
+    up = (up / np.linalg.norm(up)).astype(np.float64)
+
+    # Remove vertical component, run PCA in the horizontal plane
+    centered_horiz = centered - np.outer(centered @ up, up)
+    _, evecs = np.linalg.eigh(np.cov(centered_horiz.T))  # ascending eigenvalues
+    horiz1 = evecs[:, 2]                        # largest horizontal variance
+    horiz1 -= (horiz1 @ up) * up               # ensure perpendicular to up
+    horiz1 /= np.linalg.norm(horiz1)
+    horiz2 = np.cross(up, horiz1)
+    horiz2 /= np.linalg.norm(horiz2)
+
+    R = np.stack([horiz1, up, horiz2], axis=1).astype(np.float32)  # cols = OBB axes
+    projected = centered @ R
+    proj_center = (projected.max(axis=0) + projected.min(axis=0)) / 2
+    obb_center  = (center + R @ proj_center).astype(np.float32)
+    obb_half    = ((projected.max(axis=0) - projected.min(axis=0)) / 2).astype(np.float32)
+    obb_quat    = Rotation.from_matrix(R).as_quat().astype(np.float32)  # xyzw
 
     return {
         "label":        matched,
         "centroid":     center,
         "bbox_min":     pts_clean.min(axis=0).astype(np.float32),
         "bbox_max":     pts_clean.max(axis=0).astype(np.float32),
-        "obb_center":   center,
+        "obb_center":   obb_center,
         "obb_half":     obb_half,
         "obb_quat":     obb_quat,
         "n_points":     len(idxs),
