@@ -143,11 +143,10 @@ def main() -> None:
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
-    keep     = conf_all > np.percentile(conf_all, 50)
+    keep     = conf_all > np.percentile(conf_all, 25)
     xyz_bg, rgb_bg = xyz_all[keep], rgb_all[keep]
-    xyz_bg, rgb_bg = _voxel_downsample(xyz_bg, rgb_bg, voxel_size=0.002)
     np.savez_compressed(args.out / "scene_cloud.npz", xyz=xyz_bg, rgb=rgb_bg)
-    print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter + voxel downsample)")
+    print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter)")
 
     # Save intrinsics alongside the scene so query.py can draw camera frustums
     np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],
