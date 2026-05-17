@@ -216,6 +216,8 @@ def _visualise_focused(
     rr.save(str(save_rrd))
     rr.send_blueprint(blueprint, make_active=True, make_default=True)
 
+    rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
+
     # --- Static entities ---
     # Use full VGGT scene cloud if available, else fall back to labelled points
     bg_xyz = scene["scene_xyz"] if scene.get("scene_xyz") is not None else scene["xyz"]
