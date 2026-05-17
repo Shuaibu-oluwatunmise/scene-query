@@ -48,6 +48,27 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _clean_scene(scene: dict, k: int = 16, std_ratio: float = 2.0) -> dict:
+    """Remove statistical outliers from the labelled point cloud."""
+    from scipy.spatial import cKDTree
+    import numpy as np
+    xyz = scene["xyz"]
+    if len(xyz) < k + 1:
+        return scene
+    tree = cKDTree(xyz)
+    dists, _ = tree.query(xyz, k=k + 1)
+    mean_dists = dists[:, 1:].mean(axis=1)
+    keep = mean_dists < (mean_dists.mean() + std_ratio * mean_dists.std())
+    print(f"  Outlier removal: {len(xyz):,} -> {keep.sum():,} points")
+    return {
+        "xyz":        xyz[keep],
+        "rgb":        scene["rgb"][keep],
+        "label":      scene["label"][keep],
+        "confidence": scene["confidence"][keep],
+        "poses":      scene.get("poses"),
+    }
+
+
 def _save_frames(frames: list, frames_dir: Path) -> None:
     import cv2
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -103,10 +124,24 @@ def main() -> None:
     )
     scene["poses"] = geometry["poses"]
 
+    # Remove outlier points from labelled cloud
+    scene = _clean_scene(scene)
+
     save_scene(scene, args.out)
 
-    # Save intrinsics alongside the scene so query.py can draw camera frustums
     import numpy as np
+
+    # Save full VGGT cloud for background visualisation in query.py.
+    # Confidence-filtered so background panels show the whole scene,
+    # regardless of what labels were specified at reconstruction time.
+    xyz_all  = geometry["xyz"]
+    rgb_all  = geometry["rgb"]
+    conf_all = geometry["xyz_conf"]
+    keep     = conf_all > np.percentile(conf_all, 25)
+    np.savez_compressed(args.out / "scene_cloud.npz",
+                        xyz=xyz_all[keep], rgb=rgb_all[keep])
+
+    # Save intrinsics alongside the scene so query.py can draw camera frustums
     np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],
                         image_size=np.array(geometry["image_size"]))
 

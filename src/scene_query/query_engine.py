@@ -25,6 +25,13 @@ def load_scene(scene_dir: str | Path) -> dict:
     with open(scene_dir / "labels.json") as f:
         label_index: dict[str, list[int]] = json.load(f)
 
+    # Full VGGT scene cloud for background visualisation (independent of labels)
+    scene_xyz, scene_rgb = None, None
+    scene_cloud_path = scene_dir / "scene_cloud.npz"
+    if scene_cloud_path.exists():
+        sc = np.load(scene_cloud_path)
+        scene_xyz, scene_rgb = sc["xyz"], sc["rgb"]
+
     return {
         "xyz":         pc["xyz"],
         "rgb":         pc["rgb"],
@@ -32,6 +39,8 @@ def load_scene(scene_dir: str | Path) -> dict:
         "confidence":  pc["confidence"],
         "poses":       poses,
         "label_index": label_index,
+        "scene_xyz":   scene_xyz,
+        "scene_rgb":   scene_rgb,
     }
 
 

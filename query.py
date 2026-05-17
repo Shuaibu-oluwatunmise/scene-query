@@ -217,18 +217,20 @@ def _visualise_focused(
     rr.send_blueprint(blueprint, make_active=True, make_default=True)
 
     # --- Static entities ---
-    xyz    = scene["xyz"]
-    rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
+    # Use full VGGT scene cloud if available, else fall back to labelled points
+    bg_xyz = scene["scene_xyz"] if scene.get("scene_xyz") is not None else scene["xyz"]
+    bg_rgb = scene["scene_rgb"] if scene.get("scene_rgb") is not None else scene["rgb"]
+    bg_rgb_u8 = (np.clip(bg_rgb, 0, 1) * 255).astype(np.uint8)
 
-    # Photo-coloured cloud (panels 2 & 5)
+    # Photo-coloured cloud (panels 2 & 5) — full scene regardless of labels
     rr.log("world/photo", rr.Points3D(
-        xyz, colors=rgb_u8, radii=rr.Radius.ui_points(1.5)
+        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(1.5)
     ), static=True)
 
-    # Grey cloud for panel 4 context
-    grey = np.full((len(xyz), 3), 65, dtype=np.uint8)
+    # Grey cloud for panel 4 context — full scene
+    grey = np.full((len(bg_xyz), 3), 65, dtype=np.uint8)
     rr.log("world/scene_bg", rr.Points3D(
-        xyz, colors=grey, radii=rr.Radius.ui_points(1.0)
+        bg_xyz, colors=grey, radii=rr.Radius.ui_points(1.0)
     ), static=True)
 
     # All points belonging to the queried label
