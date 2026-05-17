@@ -69,6 +69,13 @@ def _clean_scene(scene: dict, k: int = 16, std_ratio: float = 2.0) -> dict:
     }
 
 
+def _voxel_downsample(xyz: "np.ndarray", rgb: "np.ndarray", voxel_size: float = 0.005):
+    import numpy as np
+    coords = np.floor(xyz / voxel_size).astype(np.int32)
+    _, unique_idx = np.unique(coords, axis=0, return_index=True)
+    return xyz[unique_idx], rgb[unique_idx]
+
+
 def _save_frames(frames: list, frames_dir: Path) -> None:
     import cv2
     frames_dir.mkdir(parents=True, exist_ok=True)
@@ -132,14 +139,15 @@ def main() -> None:
     import numpy as np
 
     # Save full VGGT cloud for background visualisation in query.py.
-    # Confidence-filtered so background panels show the whole scene,
-    # regardless of what labels were specified at reconstruction time.
+    # Keep top 50% by confidence, then voxel-downsample for uniform density.
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
-    keep     = conf_all > np.percentile(conf_all, 25)
-    np.savez_compressed(args.out / "scene_cloud.npz",
-                        xyz=xyz_all[keep], rgb=rgb_all[keep])
+    keep     = conf_all > np.percentile(conf_all, 50)
+    xyz_bg, rgb_bg = xyz_all[keep], rgb_all[keep]
+    xyz_bg, rgb_bg = _voxel_downsample(xyz_bg, rgb_bg, voxel_size=0.005)
+    np.savez_compressed(args.out / "scene_cloud.npz", xyz=xyz_bg, rgb=rgb_bg)
+    print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter + voxel downsample)")
 
     # Save intrinsics alongside the scene so query.py can draw camera frustums
     np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],

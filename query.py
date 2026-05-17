@@ -226,7 +226,7 @@ def _visualise_focused(
 
     # Photo-coloured cloud (panels 2 & 5) — full scene regardless of labels
     rr.log("world/photo", rr.Points3D(
-        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(1.5)
+        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(2.0)
     ), static=True)
 
     # Grey cloud for panel 4 context — full scene
