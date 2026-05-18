@@ -70,6 +70,7 @@ def segment_frames_yolo(
                     "mask":        mask,
                     "confidence":  conf,
                     "instance_id": i,
+                    "bbox":        [x1, y1, x2, y2],
                 })
 
         all_results.append(frame_dets)

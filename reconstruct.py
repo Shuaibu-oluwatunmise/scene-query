@@ -187,9 +187,10 @@ def _save_rrd(
     scene: dict,
     rrd_path: Path,
 ) -> None:
-    """Write a Rerun .rrd with 2 panels:
-    - Left:  original camera feed playing as video (timeline)
-    - Right: photo-coloured 3D scene with camera moving through it (timeline)
+    """Write a Rerun .rrd with 3 panels:
+    - Left:   original camera feed (raw)
+    - Centre: camera feed with YOLO detections overlaid as 2D bboxes
+    - Right:  photo-coloured 3D scene with camera moving through it
     """
     import numpy as np
     import rerun as rr
@@ -201,6 +202,7 @@ def _save_rrd(
     blueprint = rrb.Blueprint(
         rrb.Horizontal(
             rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+            rrb.Spatial2DView(name="Detections", contents=["camera/rgb", "camera/detections"]),
             rrb.Spatial3DView(
                 name="3D Reconstruction",
                 contents=["world/photo", "world/camera"],
@@ -254,6 +256,22 @@ def _save_rrd(
             width=W_orig, height=H_orig,
         ))
         rr.log("world/camera/image", rr.Image(frame))
+
+        # 2D detection boxes (YOLO backend includes "bbox"; GSAM2 does not)
+        frame_dets = masks_per_frame[i] if i < len(masks_per_frame) else []
+        bbox_dets = [d for d in frame_dets if "bbox" in d]
+        if bbox_dets:
+            mins   = [[d["bbox"][0], d["bbox"][1]] for d in bbox_dets]
+            sizes  = [[d["bbox"][2] - d["bbox"][0], d["bbox"][3] - d["bbox"][1]]
+                      for d in bbox_dets]
+            colors = [_label_colour(d["label"]) for d in bbox_dets]
+            labels = [f"{d['label']} {d['confidence']:.2f}" for d in bbox_dets]
+            rr.log("camera/detections", rr.Boxes2D(
+                mins=mins, sizes=sizes,
+                colors=colors, labels=labels,
+            ))
+        else:
+            rr.log("camera/detections", rr.Clear(recursive=False))
 
     print(f"Saved -> {rrd_path}")
 
