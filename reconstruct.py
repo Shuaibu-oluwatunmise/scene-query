@@ -211,7 +211,7 @@ def _save_rrd(
     keep     = conf_all > np.percentile(conf_all, 25)
     rgb_u8   = (np.clip(rgb_all[keep], 0, 1) * 255).astype(np.uint8)
     rr.log("world/photo", rr.Points3D(
-        xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(5.0),
+        xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
     # Per-frame timeline

@@ -229,13 +229,13 @@ def _visualise_focused(
 
     # Photo-coloured cloud (panels 2 & 5) — full scene regardless of labels
     rr.log("world/photo", rr.Points3D(
-        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(5.0)
+        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(2.0)
     ), static=True)
 
     # Grey cloud for panel 4 context — full scene
     grey = np.full((len(bg_xyz), 3), 65, dtype=np.uint8)
     rr.log("world/scene_bg", rr.Points3D(
-        bg_xyz, colors=grey, radii=rr.Radius.ui_points(3.0)
+        bg_xyz, colors=grey, radii=rr.Radius.ui_points(1.0)
     ), static=True)
 
     # All points belonging to the queried label
@@ -251,7 +251,7 @@ def _visualise_focused(
     rr.log("world/query_pts", rr.Points3D(
         bg_xyz[in_bbox],
         colors=np.tile(colour, (in_bbox.sum(), 1)).astype(np.uint8),
-        radii=rr.Radius.ui_points(6.0),
+        radii=rr.Radius.ui_points(2.5),
     ), static=True)
 
     # Panel 5: OBB over photo-coloured scene
@@ -373,12 +373,12 @@ def _visualise_multi(
     bg_rgb_u8 = (np.clip(bg_rgb, 0, 1) * 255).astype(np.uint8)
 
     rr.log("world/photo", rr.Points3D(
-        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(5.0),
+        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
     grey = np.full((len(bg_xyz), 3), 65, dtype=np.uint8)
     rr.log("world/scene_bg", rr.Points3D(
-        bg_xyz, colors=grey, radii=rr.Radius.ui_points(3.0),
+        bg_xyz, colors=grey, radii=rr.Radius.ui_points(1.0),
     ), static=True)
 
     # Assign intersecting points to the label with the smallest bbox (most specific).
@@ -400,7 +400,7 @@ def _visualise_multi(
         rr.log("world/query_pts", rr.Points3D(
             bg_xyz[assigned],
             colors=colour_map[assigned],
-            radii=rr.Radius.ui_points(6.0),
+            radii=rr.Radius.ui_points(2.5),
         ), static=True)
 
     for result, colour in zip(results, colours):
