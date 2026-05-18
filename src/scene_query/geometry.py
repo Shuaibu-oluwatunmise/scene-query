@@ -20,8 +20,16 @@ def load_model(weights_dir: str | Path, device: str = "cuda"):
     return model.to(device).eval()
 
 
-def extract_frames(video_path: str | Path, fps: float = 5.0) -> list[np.ndarray]:
-    """Sample video uniformly at `fps` and return frames as RGB uint8 (H, W, 3)."""
+def extract_frames(
+    video_path: str | Path,
+    fps: float = 5.0,
+    max_frames: int = 50,
+) -> list[np.ndarray]:
+    """Sample video uniformly at `fps`, then subsample to at most `max_frames`.
+
+    VGGT quality degrades beyond ~50 frames (transformer attention overhead).
+    The cap ensures consistent quality regardless of video length.
+    """
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise FileNotFoundError(f"Could not open video: {video_path}")
@@ -38,6 +46,12 @@ def extract_frames(video_path: str | Path, fps: float = 5.0) -> list[np.ndarray]
             frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         i += 1
     cap.release()
+
+    # Uniform subsample down to max_frames if needed
+    if len(frames) > max_frames:
+        indices = np.linspace(0, len(frames) - 1, max_frames, dtype=int)
+        frames = [frames[j] for j in indices]
+
     return frames
 
 

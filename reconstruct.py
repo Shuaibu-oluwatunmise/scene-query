@@ -28,6 +28,8 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--out", type=Path, required=True, help="Output scene directory")
     p.add_argument("--fps", type=float, default=5.0, help="Frame sample rate (video input only)")
+    p.add_argument("--max-frames", type=int, default=50,
+                   help="Cap frames fed to VGGT (video input only) — quality degrades beyond ~50")
     p.add_argument(
         "--labels",
         type=str,
@@ -95,7 +97,7 @@ def main() -> None:
         frames = load_frames_from_dir(args.images)
     else:
         print(f"Extracting frames at {args.fps} fps from {args.video}...")
-        frames = extract_frames(args.video, fps=args.fps)
+        frames = extract_frames(args.video, fps=args.fps, max_frames=args.max_frames)
         _save_frames(frames, args.out / "frames")
     print(f"  {len(frames)} frames ready")
 
