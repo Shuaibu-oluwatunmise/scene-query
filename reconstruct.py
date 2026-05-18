@@ -6,10 +6,9 @@ from pathlib import Path
 
 from src.scene_query.geometry import extract_frames, load_frames_from_dir, load_model, run_vggt
 from src.scene_query.lift import lift_masks, save_scene
-from src.scene_query.semantics import (
-    load_yolo_model, segment_frames_yolo,
-    load_models, segment_frames,
-)
+from src.scene_query.semantics import load_yolo_model, segment_frames_yolo
+
+_REPO_ROOT = Path(__file__).parent
 
 def _label_colour(label: str) -> list[int]:
     """Deterministic, visually distinct colour for any label string."""
@@ -33,24 +32,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--fps", type=float, default=2.0, help="Frame sample rate (video input only)")
     p.add_argument("--max-frames", type=int, default=50,
                    help="Cap frames fed to VGGT (video input only) — quality degrades beyond ~50")
-    p.add_argument(
-        "--backend", type=str, default="yolo", choices=["yolo", "gsam2"],
-        help="Semantics backend: 'yolo' (default, uses trained office model) or 'gsam2'"
-    )
-    p.add_argument(
-        "--labels",
-        type=str,
-        default="chair,table,sofa,door,window,bed,desk",
-        help="Comma-separated object labels (only used with --backend gsam2)",
-    )
-    p.add_argument("--weights-vggt", type=Path, default=Path("checkpoints/vggt_omega"),
-                   help="VGGT weights directory")
+    p.add_argument("--weights-vggt", type=Path,
+                   default=_REPO_ROOT / "checkpoints" / "vggt_omega",
+                   help="VGGT-Omega weights directory")
     p.add_argument("--weights-yolo", type=Path, default=None,
-                   help="YOLOv8 detection weights .pt file (default: checkpoints/yolo_office/best.pt)")
-    p.add_argument("--weights-gdino", type=Path, default=None,
-                   help="Grounding DINO weights directory (only with --backend gsam2)")
-    p.add_argument("--weights-sam2", type=Path, default=None,
-                   help="SAM 2.1 weights directory (only with --backend gsam2)")
+                   help="YOLOv8 weights .pt file (default: checkpoints/yolo_office/best.pt)")
     p.add_argument("--device", type=str, default="cuda")
     p.add_argument("--geometry-only", action="store_true",
                    help="Run VGGT only — skip semantics and lifting.")
@@ -121,22 +107,10 @@ def main() -> None:
         return
 
     # --- Semantics ---
-    if args.backend == "yolo":
-        print(f"\nRunning YOLO semantics...")
-        yolo_model = load_yolo_model(args.weights_yolo, args.device)
-        print(f"  Classes: {list(yolo_model.names.values())}")
-        masks_per_frame = segment_frames_yolo(frames, yolo_model, args.device)
-    else:
-        labels = [l.strip() for l in args.labels.split(",")]
-        print(f"\nRunning Grounded-SAM-2 for: {labels}...")
-        grounding_model, sam_model = load_models(
-            args.device,
-            weights_gdino=args.weights_gdino,
-            weights_sam2=args.weights_sam2,
-        )
-        masks_per_frame = segment_frames(
-            frames, labels, grounding_model, sam_model, args.device
-        )
+    print(f"\nRunning YOLO semantics...")
+    yolo_model = load_yolo_model(args.weights_yolo, args.device)
+    print(f"  Classes: {list(yolo_model.names.values())}")
+    masks_per_frame = segment_frames_yolo(frames, yolo_model, args.device)
 
     # --- Lift to 3D ---
     print("\nLifting masks to 3D...")
