@@ -26,7 +26,7 @@ def _label_colour(label: str) -> list[int]:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("scene_dir", type=Path, help="Scene directory from reconstruct.py")
-    p.add_argument("query", nargs="?", help='Object to find, e.g. "find the chair"')
+    p.add_argument("query", nargs="*", help='Objects to find, e.g. "bulldozer table mug"')
     p.add_argument("--free-space", action="store_true", help="Query traversable floor space")
     p.add_argument("--floor-z", type=float, default=0.0, help="Floor height in metres")
     p.add_argument(
@@ -74,7 +74,10 @@ def visualise(
 
     if (save_rrd is not None and query_type == "object" and result is not None
             and images_dir is not None and scene_dir is not None):
-        _visualise_focused(scene, result, save_rrd, images_dir, scene_dir)
+        if isinstance(result, list):
+            _visualise_multi(scene, result, save_rrd, images_dir, scene_dir)
+        else:
+            _visualise_focused(scene, result, save_rrd, images_dir, scene_dir)
         return
 
     rr.init("scene-query", spawn=False)
@@ -358,6 +361,207 @@ def _seg_overlay(
 
 
 # ---------------------------------------------------------------------------
+# Multi-object 5-panel recording
+# ---------------------------------------------------------------------------
+
+def _seg_overlay_multi(
+    frame: np.ndarray,
+    all_pts: list[tuple],   # list of (pts_world, colour)
+    pose: np.ndarray,
+    K_vggt: np.ndarray,
+    image_size,
+) -> np.ndarray:
+    """Back-project multiple label point sets into frame, each in its own colour."""
+    import cv2
+
+    H, W     = frame.shape[:2]
+    H_d, W_d = int(image_size[0]), int(image_size[1])
+    K = K_vggt.astype(float).copy()
+    K[0] *= W / W_d
+    K[1] *= H / H_d
+    w2c = np.linalg.inv(pose)
+
+    overlay      = frame.astype(float)
+    combined     = np.zeros((H, W), dtype=bool)
+    per_masks    = []
+
+    for pts_world, _ in all_pts:
+        if len(pts_world) == 0:
+            per_masks.append(np.zeros((H, W), dtype=bool))
+            continue
+        pts_h = np.hstack([pts_world, np.ones((len(pts_world), 1))])
+        cam   = (w2c @ pts_h.T).T[:, :3]
+        cam   = cam[cam[:, 2] > 0.01]
+        if len(cam) == 0:
+            per_masks.append(np.zeros((H, W), dtype=bool))
+            continue
+        proj  = (K @ cam.T).T
+        px    = proj[:, 0] / proj[:, 2]
+        py    = proj[:, 1] / proj[:, 2]
+        valid = (px >= 0) & (px < W) & (py >= 0) & (py < H)
+        px_i  = np.clip(np.round(px[valid]).astype(np.int32), 0, W - 1)
+        py_i  = np.clip(np.round(py[valid]).astype(np.int32), 0, H - 1)
+        density = np.zeros((H, W), dtype=np.float32)
+        np.add.at(density, (py_i, px_i), 1.0)
+        density = cv2.GaussianBlur(density, (0, 0), sigmaX=3)
+        mask    = (density > 0.5).astype(np.uint8)
+        mask    = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8)).astype(bool)
+        per_masks.append(mask)
+        combined |= mask
+
+    overlay[~combined] = overlay[~combined] * 0.6 + 20
+    for (_, colour), mask in zip(all_pts, per_masks):
+        if mask.any():
+            c = np.array(colour, dtype=float)
+            overlay[mask] = overlay[mask] * 0.3 + c * 0.7
+
+    return np.clip(overlay, 0, 255).astype(np.uint8)
+
+
+def _visualise_multi(
+    scene: dict,
+    results: list[dict],
+    save_rrd: Path,
+    images_dir: Path,
+    scene_dir: Path,
+) -> None:
+    """5-panel recording for multiple queried objects.
+
+    Top row  (timeline): Camera feed | 3D cam-locked | Multi-object seg overlay
+    Bottom row (static): Grey scene with all labels coloured | Photo + all OBBs
+    """
+    import rerun as rr
+    import rerun.blueprint as rrb
+    import rerun.blueprint.archetypes as ba
+
+    labels  = [r["label"] for r in results]
+    colours = [_label_colour(lbl) for lbl in labels]
+    name    = " + ".join(labels)
+
+    poses_arr = scene["poses"]
+    cam0      = poses_arr[0]
+    cam0_pos  = cam0[:3, 3].tolist()
+    cam0_fwd  = (cam0[:3, 3] + cam0[:3, 2]).tolist()
+    cam0_up   = (-cam0[:3, 1]).tolist()
+    bg        = [20, 20, 20]
+
+    first_cam_eye = ba.EyeControls3D(
+        position=cam0_pos,
+        look_target=cam0_fwd,
+        eye_up=cam0_up,
+    )
+
+    blueprint = rrb.Blueprint(
+        rrb.Vertical(
+            rrb.Horizontal(
+                rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+                rrb.Spatial3DView(
+                    name="3D Reconstruction",
+                    contents=["world/photo", "world/camera"],
+                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                    background=bg,
+                ),
+                rrb.Spatial2DView(name=f"Segmentation — {name}", contents=["camera/segmentation"]),
+            ),
+            rrb.Horizontal(
+                rrb.Spatial3DView(
+                    name=f"Objects — {name}",
+                    contents=["world/scene_bg", "world/query_pts/**"],
+                    eye_controls=first_cam_eye,
+                    background=bg,
+                ),
+                rrb.Spatial3DView(
+                    name="Bounding Boxes",
+                    contents=["world/photo", "world/query_bbox/**"],
+                    eye_controls=first_cam_eye,
+                    background=bg,
+                ),
+            ),
+            row_shares=[3, 2],
+        ),
+        collapse_panels=True,
+        auto_views=False,
+    )
+
+    rr.init("scene-query", spawn=False)
+    rr.save(str(save_rrd))
+    rr.send_blueprint(blueprint, make_active=True, make_default=True)
+    rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
+
+    bg_xyz    = scene["scene_xyz"] if scene.get("scene_xyz") is not None else scene["xyz"]
+    bg_rgb    = scene["scene_rgb"] if scene.get("scene_rgb") is not None else scene["rgb"]
+    bg_rgb_u8 = (np.clip(bg_rgb, 0, 1) * 255).astype(np.uint8)
+
+    rr.log("world/photo", rr.Points3D(
+        bg_xyz, colors=bg_rgb_u8, radii=rr.Radius.ui_points(2.0),
+    ), static=True)
+
+    grey = np.full((len(bg_xyz), 3), 65, dtype=np.uint8)
+    rr.log("world/scene_bg", rr.Points3D(
+        bg_xyz, colors=grey, radii=rr.Radius.ui_points(1.0),
+    ), static=True)
+
+    # Per-label: highlighted cloud + OBB; collect pts for seg overlay
+    all_pts: list[tuple] = []
+    for result, colour in zip(results, colours):
+        label    = result["label"]
+        idxs     = np.array(scene["label_index"][label], dtype=np.int64)
+        pts      = scene["xyz"][idxs]
+        all_pts.append((pts, colour))
+
+        bbox_min = result["bbox_min"]
+        bbox_max = result["bbox_max"]
+        in_bbox  = np.all((bg_xyz >= bbox_min) & (bg_xyz <= bbox_max), axis=1)
+        if in_bbox.any():
+            rr.log(f"world/query_pts/{label}", rr.Points3D(
+                bg_xyz[in_bbox],
+                colors=np.tile(colour, (in_bbox.sum(), 1)).astype(np.uint8),
+                radii=rr.Radius.ui_points(2.5),
+            ), static=True)
+
+        rr.log(f"world/query_bbox/{label}", rr.Boxes3D(
+            centers=[result["obb_center"].tolist()],
+            half_sizes=[result["obb_half"].tolist()],
+            quaternions=[rr.Quaternion(xyzw=result["obb_quat"].tolist())],
+            colors=[colour],
+            labels=[label],
+        ), static=True)
+
+    # Per-frame timeline
+    from src.scene_query.geometry import load_frames_from_dir
+    frames = load_frames_from_dir(images_dir)
+
+    intr       = np.load(scene_dir / "intrinsics.npz")
+    intrinsics = intr["intrinsics"]
+    image_size = intr["image_size"]
+
+    for i, frame in enumerate(frames):
+        rr.set_time("frame", sequence=i)
+        rr.log("camera/rgb", rr.Image(frame))
+
+        pose = poses_arr[i]
+        K    = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
+        H_d, W_d       = int(image_size[0]), int(image_size[1])
+        H_orig, W_orig = frame.shape[:2]
+        sx, sy = W_orig / W_d, H_orig / H_d
+
+        rr.log("world/camera", rr.Transform3D(
+            translation=pose[:3, 3].tolist(),
+            mat3x3=pose[:3, :3].tolist(),
+        ))
+        rr.log("world/camera", rr.Pinhole(
+            focal_length=[float(K[0, 0]) * sx, float(K[1, 1]) * sy],
+            principal_point=[float(K[0, 2]) * sx, float(K[1, 2]) * sy],
+            width=W_orig, height=H_orig,
+        ))
+
+        seg = _seg_overlay_multi(frame, all_pts, pose, K, image_size)
+        rr.log("camera/segmentation", rr.Image(seg))
+
+    print(f"Saved -> {save_rrd}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -381,14 +585,31 @@ def main() -> None:
             print(f"  {r['label']:20s}  centroid={r['centroid']}  n={r['n_points']}")
 
     elif args.query:
-        label      = args.query.lower().removeprefix("find the ").removeprefix("find ").strip()
-        result     = query_object(scene, label)
         query_type = "object"
-        print(f"Label      : {result['label']}")
-        print(f"Centroid   : {result['centroid']}")
-        print(f"Bbox       : {result['bbox_min']} -> {result['bbox_max']}")
-        print(f"Points     : {result['n_points']}")
-        print(f"Confidence : {result['confidence']:.2f}")
+        if len(args.query) == 1:
+            label  = args.query[0].lower().removeprefix("find the ").removeprefix("find ").strip()
+            result = query_object(scene, label)
+            print(f"Label      : {result['label']}")
+            print(f"Centroid   : {result['centroid']}")
+            print(f"Bbox       : {result['bbox_min']} -> {result['bbox_max']}")
+            print(f"Points     : {result['n_points']}")
+            print(f"Confidence : {result['confidence']:.2f}")
+        else:
+            results = []
+            for q in args.query:
+                label = q.lower().removeprefix("find the ").removeprefix("find ").strip()
+                try:
+                    r = query_object(scene, label)
+                    results.append(r)
+                    print(f"Label      : {r['label']}")
+                    print(f"Centroid   : {r['centroid']}")
+                    print(f"Bbox       : {r['bbox_min']} -> {r['bbox_max']}")
+                    print(f"Points     : {r['n_points']}")
+                    print(f"Confidence : {r['confidence']:.2f}")
+                    print()
+                except KeyError as e:
+                    print(f"Warning: {e}")
+            result = results
 
     if not args.no_vis:
         images_dir = args.images
