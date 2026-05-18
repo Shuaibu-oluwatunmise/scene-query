@@ -193,7 +193,6 @@ def _visualise_focused(
                     eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
                     background=bg,
                 ),
-                rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
             ),
             # Bottom row: static overview panels
             rrb.Horizontal(
@@ -293,130 +292,12 @@ def _visualise_focused(
             width=W_orig, height=H_orig,
         ))
 
-        seg = _seg_overlay(frame, pts, pose, K, image_size, colour)
-        rr.log("camera/segmentation", rr.Image(seg))
-
     print(f"Saved -> {save_rrd}")
 
 
-def _seg_overlay(
-    frame: np.ndarray,
-    pts_world: np.ndarray,
-    pose: np.ndarray,
-    K_vggt: np.ndarray,
-    image_size,
-    colour: list[int],
-) -> np.ndarray:
-    """Back-project 3D label points into frame and return a colour overlay.
-
-    Uses a density-map approach: accumulate all projected point hits per pixel,
-    Gaussian-blur the density, then threshold. Much more filled than sparse
-    point + dilation because every one of the 500K+ label points contributes.
-    """
-    import cv2
-
-    H, W     = frame.shape[:2]
-    H_d, W_d = int(image_size[0]), int(image_size[1])
-
-    K = K_vggt.astype(float).copy()
-    K[0] *= W / W_d
-    K[1] *= H / H_d
-
-    # World → camera space
-    w2c   = np.linalg.inv(pose)
-    pts_h = np.hstack([pts_world, np.ones((len(pts_world), 1))])
-    cam   = (w2c @ pts_h.T).T[:, :3]
-
-    # Keep only front-facing points
-    cam = cam[cam[:, 2] > 0.01]
-    if len(cam) == 0:
-        return frame.copy()
-
-    # Project to pixel coords (all points — density accuracy requires no subsampling)
-    proj = (K @ cam.T).T
-    px   = proj[:, 0] / proj[:, 2]
-    py   = proj[:, 1] / proj[:, 2]
-
-    valid = (px >= 0) & (px < W) & (py >= 0) & (py < H)
-    px_i  = np.clip(np.round(px[valid]).astype(np.int32), 0, W - 1)
-    py_i  = np.clip(np.round(py[valid]).astype(np.int32), 0, H - 1)
-
-    # Accumulate hit density per pixel, blur to fill small gaps, threshold
-    density = np.zeros((H, W), dtype=np.float32)
-    np.add.at(density, (py_i, px_i), 1.0)
-    density = cv2.GaussianBlur(density, (0, 0), sigmaX=3)
-
-    # Threshold at 1 hit (after blur ~0.5 keeps only real projections)
-    mask = (density > 0.5).astype(np.uint8)
-    # Small closing to seal holes inside the object silhouette
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
-    mask = mask.astype(bool)
-
-    # Colour blend: label region bright, background lightly desaturated
-    c       = np.array(colour, dtype=float)
-    overlay = frame.astype(float)
-    overlay[mask]  = overlay[mask] * 0.3 + c * 0.7
-    overlay[~mask] = overlay[~mask] * 0.6 + 20          # visible but clearly dimmed
-    return np.clip(overlay, 0, 255).astype(np.uint8)
-
-
 # ---------------------------------------------------------------------------
-# Multi-object 5-panel recording
+# Multi-object 4-panel recording
 # ---------------------------------------------------------------------------
-
-def _seg_overlay_multi(
-    frame: np.ndarray,
-    all_pts: list[tuple],   # list of (pts_world, colour)
-    pose: np.ndarray,
-    K_vggt: np.ndarray,
-    image_size,
-) -> np.ndarray:
-    """Back-project multiple label point sets into frame, each in its own colour."""
-    import cv2
-
-    H, W     = frame.shape[:2]
-    H_d, W_d = int(image_size[0]), int(image_size[1])
-    K = K_vggt.astype(float).copy()
-    K[0] *= W / W_d
-    K[1] *= H / H_d
-    w2c = np.linalg.inv(pose)
-
-    overlay      = frame.astype(float)
-    combined     = np.zeros((H, W), dtype=bool)
-    per_masks    = []
-
-    for pts_world, _ in all_pts:
-        if len(pts_world) == 0:
-            per_masks.append(np.zeros((H, W), dtype=bool))
-            continue
-        pts_h = np.hstack([pts_world, np.ones((len(pts_world), 1))])
-        cam   = (w2c @ pts_h.T).T[:, :3]
-        cam   = cam[cam[:, 2] > 0.01]
-        if len(cam) == 0:
-            per_masks.append(np.zeros((H, W), dtype=bool))
-            continue
-        proj  = (K @ cam.T).T
-        px    = proj[:, 0] / proj[:, 2]
-        py    = proj[:, 1] / proj[:, 2]
-        valid = (px >= 0) & (px < W) & (py >= 0) & (py < H)
-        px_i  = np.clip(np.round(px[valid]).astype(np.int32), 0, W - 1)
-        py_i  = np.clip(np.round(py[valid]).astype(np.int32), 0, H - 1)
-        density = np.zeros((H, W), dtype=np.float32)
-        np.add.at(density, (py_i, px_i), 1.0)
-        density = cv2.GaussianBlur(density, (0, 0), sigmaX=3)
-        mask    = (density > 0.5).astype(np.uint8)
-        mask    = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8)).astype(bool)
-        per_masks.append(mask)
-        combined |= mask
-
-    overlay[~combined] = overlay[~combined] * 0.6 + 20
-    for (_, colour), mask in zip(all_pts, per_masks):
-        if mask.any():
-            c = np.array(colour, dtype=float)
-            overlay[mask] = overlay[mask] * 0.3 + c * 0.7
-
-    return np.clip(overlay, 0, 255).astype(np.uint8)
-
 
 def _visualise_multi(
     scene: dict,
@@ -425,10 +306,10 @@ def _visualise_multi(
     images_dir: Path,
     scene_dir: Path,
 ) -> None:
-    """5-panel recording for multiple queried objects.
+    """4-panel recording for multiple queried objects.
 
-    Top row  (timeline): Camera feed | 3D cam-locked | Multi-object seg overlay
-    Bottom row (static): Grey scene with all labels coloured | Photo + all OBBs
+    Top row  (timeline): Camera feed | 3D reconstruction (cam-locked)
+    Bottom row (static): Grey scene + all labels coloured | Photo cloud + all OBBs
     """
     import rerun as rr
     import rerun.blueprint as rrb
@@ -461,7 +342,6 @@ def _visualise_multi(
                     eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
                     background=bg,
                 ),
-                rrb.Spatial2DView(name=f"Segmentation — {name}", contents=["camera/segmentation"]),
             ),
             rrb.Horizontal(
                 rrb.Spatial3DView(
@@ -501,14 +381,8 @@ def _visualise_multi(
         bg_xyz, colors=grey, radii=rr.Radius.ui_points(1.0),
     ), static=True)
 
-    # Per-label: highlighted cloud + OBB; collect pts for seg overlay
-    all_pts: list[tuple] = []
     for result, colour in zip(results, colours):
         label    = result["label"]
-        idxs     = np.array(scene["label_index"][label], dtype=np.int64)
-        pts      = scene["xyz"][idxs]
-        all_pts.append((pts, colour))
-
         bbox_min = result["bbox_min"]
         bbox_max = result["bbox_max"]
         in_bbox  = np.all((bg_xyz >= bbox_min) & (bg_xyz <= bbox_max), axis=1)
@@ -527,7 +401,7 @@ def _visualise_multi(
             labels=[label],
         ), static=True)
 
-    # Per-frame timeline
+    # Per-frame timeline: raw camera feed + moving camera in 3D (no overlay)
     from src.scene_query.geometry import load_frames_from_dir
     frames = load_frames_from_dir(images_dir)
 
@@ -539,11 +413,11 @@ def _visualise_multi(
         rr.set_time("frame", sequence=i)
         rr.log("camera/rgb", rr.Image(frame))
 
-        pose = poses_arr[i]
-        K    = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
+        pose           = poses_arr[i]
+        K              = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
         H_d, W_d       = int(image_size[0]), int(image_size[1])
         H_orig, W_orig = frame.shape[:2]
-        sx, sy = W_orig / W_d, H_orig / H_d
+        sx, sy         = W_orig / W_d, H_orig / H_d
 
         rr.log("world/camera", rr.Transform3D(
             translation=pose[:3, 3].tolist(),
@@ -554,9 +428,6 @@ def _visualise_multi(
             principal_point=[float(K[0, 2]) * sx, float(K[1, 2]) * sy],
             width=W_orig, height=H_orig,
         ))
-
-        seg = _seg_overlay_multi(frame, all_pts, pose, K, image_size)
-        rr.log("camera/segmentation", rr.Image(seg))
 
     print(f"Saved -> {save_rrd}")
 
