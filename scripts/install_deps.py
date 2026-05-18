@@ -1,15 +1,12 @@
 """Install all Python dependencies for scene-query.
 
 Installs:
-  - requirements.txt (rerun, numpy, scipy, opencv, pillow, etc.)
-  - ultralytics (YOLOv8)
+  - requirements.txt (numpy, scipy, opencv, rerun, ultralytics, gdown, etc.)
   - vggt-omega Python package (cloned from GitHub, no-deps install)
 
 Usage:
     python scripts/install_deps.py
 """
-from __future__ import annotations
-
 import subprocess
 import sys
 import tempfile
@@ -32,13 +29,10 @@ def main() -> None:
 
     print("=== Installing dependencies ===\n")
 
-    print("[1/3] Core requirements (requirements.txt)...")
+    print("[1/2] Requirements (requirements.txt)...")
     run(pip + ["-r", str(REPO_ROOT / "requirements.txt")], "requirements.txt")
 
-    print("\n[2/3] ultralytics (YOLOv8)...")
-    run(pip + ["ultralytics"], "ultralytics")
-
-    print("\n[3/3] vggt-omega Python package (from GitHub)...")
+    print("\n[2/2] vggt-omega Python package (from GitHub)...")
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "vggt-omega"
         run(["git", "clone", "--depth=1", OMEGA_GH, str(src)], "git clone vggt-omega")

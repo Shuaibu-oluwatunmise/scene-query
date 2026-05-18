@@ -2,30 +2,19 @@
 #   https://pytorch.org/get-started/locally/
 #   e.g. pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
-# Core
 numpy>=1.24
 scipy>=1.11
 opencv-python>=4.8
 pillow>=10.0
 tqdm>=4.65
+requests
 
 # Visualisation
 rerun-sdk>=0.18
 
-# VGGT — install from source:
-#   pip install git+https://github.com/facebookresearch/vggt.git
-#   (downloads weights automatically on first use via HuggingFace)
+# Semantics
+ultralytics
 
-# Grounded-SAM-2 dependencies (installed alongside the source clone):
-supervision>=0.21
-transformers>=4.40,<5.0
-addict
-yapf
-timm
-pycocotools
-
-# Grounded-SAM-2 — install from source (bundles sam2 + groundingdino):
-#   git clone https://github.com/IDEA-Research/Grounded-SAM-2 /workspace/Grounded-SAM-2
-#   pip install -e /workspace/Grounded-SAM-2
-#   pip install --no-build-isolation -e /workspace/Grounded-SAM-2/grounding_dino
-#   echo /workspace/Grounded-SAM-2 > $(python -c "import site; print(site.getsitepackages()[0])")/grounded_sam2.pth
+# Model downloads
+gdown
+huggingface_hub

@@ -1,58 +1,32 @@
-"""Download model weights from OneDrive into checkpoints/.
+"""Download model weights from Google Drive into checkpoints/.
 
-Always downloads VGGT-Omega (too large for git).
-Only downloads YOLO weights if checkpoints/yolo_office/best.pt is missing.
+VGGT-Omega weights are always downloaded (~4.3 GB).
+YOLO weights are skipped if checkpoints/yolo_office/best.pt already exists
+(it ships with the repo, so this only runs when git clone is not used).
 
 Usage:
     python scripts/download_models.py
 """
-from __future__ import annotations
-
-import base64
 import sys
 import zipfile
 from pathlib import Path
 
-# ── OneDrive share URLs ───────────────────────────────────────────────────────
-# After uploading, paste each file's share link here (Anyone with link → View).
-VGGT_OMEGA_SHARE_URL = "PASTE_ONEDRIVE_SHARE_URL_FOR_vggt_omega.zip"
-YOLO_SHARE_URL       = "PASTE_ONEDRIVE_SHARE_URL_FOR_yolo_office.zip"
-# ─────────────────────────────────────────────────────────────────────────────
+# Google Drive file/folder IDs
+VGGT_GDRIVE_ID  = "1K2kK6ZiL93V06uZOH4D5oE-TzQAdLDHM"   # vggt_omega zip (~4.3 GB)
+YOLO_GDRIVE_ID  = "1aeM2GtvtdwIXH-pCcIqJgCu-TE8fbOfJ"   # yolo_office folder
 
-REPO_ROOT  = Path(__file__).parent.parent
-CKPT_ROOT  = REPO_ROOT / "checkpoints"
-YOLO_PT    = CKPT_ROOT / "yolo_office" / "best.pt"
-VGGT_DIR   = CKPT_ROOT / "vggt_omega"
+REPO_ROOT = Path(__file__).parent.parent
+CKPT_ROOT = REPO_ROOT / "checkpoints"
+YOLO_PT   = CKPT_ROOT / "yolo_office" / "best.pt"
+VGGT_PT   = CKPT_ROOT / "vggt_omega" / "vggt_omega_1b_512.pt"
 
 
-def _onedrive_direct(share_url: str) -> str:
-    """Convert a OneDrive share link to a direct-download URL."""
-    encoded = base64.urlsafe_b64encode(share_url.encode()).decode().rstrip("=")
-    return f"https://api.onedrive.com/v1.0/shares/u!{encoded}/root/content"
-
-
-def _download(url: str, dest: Path, label: str) -> None:
+def _ensure_gdown() -> None:
     try:
-        import requests
+        import gdown  # noqa: F401
     except ImportError:
         import subprocess
-        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "requests"], check=True)
-        import requests
-
-    print(f"  Downloading {label}...")
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True, allow_redirects=True, timeout=60) as r:
-        r.raise_for_status()
-        total = int(r.headers.get("content-length", 0))
-        downloaded = 0
-        with open(dest, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
-                f.write(chunk)
-                downloaded += len(chunk)
-                if total:
-                    pct = downloaded / total * 100
-                    print(f"\r    {pct:.1f}%  ({downloaded/1e6:.0f}/{total/1e6:.0f} MB)", end="", flush=True)
-    print(f"\r    Done — {downloaded/1e6:.0f} MB saved to {dest}")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "gdown"], check=True)
 
 
 def _unzip(zip_path: Path, dest_dir: Path) -> None:
@@ -60,50 +34,74 @@ def _unzip(zip_path: Path, dest_dir: Path) -> None:
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(dest_dir)
     zip_path.unlink()
-    print(f"  Extracted to {dest_dir}/")
 
 
 def download_vggt_omega() -> None:
-    if VGGT_OMEGA_SHARE_URL.startswith("PASTE"):
-        print("ERROR: Set VGGT_OMEGA_SHARE_URL in scripts/download_models.py first.")
-        sys.exit(1)
+    import gdown
 
+    if VGGT_PT.exists():
+        print(f"  VGGT-Omega already present ({VGGT_PT.stat().st_size/1e9:.2f} GB) — skipping.")
+        return
+
+    CKPT_ROOT.mkdir(parents=True, exist_ok=True)
     zip_path = CKPT_ROOT / "vggt_omega.zip"
-    _download(_onedrive_direct(VGGT_OMEGA_SHARE_URL), zip_path, "VGGT-Omega (~4.3 GB)")
-    _unzip(zip_path, CKPT_ROOT)
 
-    pt = VGGT_DIR / "vggt_omega_1b_512.pt"
-    if not pt.exists():
-        print(f"ERROR: Expected {pt} after unzip — check the zip structure.")
+    print("  Downloading VGGT-Omega weights from Google Drive (~4.3 GB)...")
+    gdown.download(id=VGGT_GDRIVE_ID, output=str(zip_path), fuzzy=True, quiet=False)
+
+    if not zip_path.exists():
+        print("ERROR: Download failed — file not found after gdown.")
         sys.exit(1)
-    print(f"  VGGT-Omega ready: {pt}  ({pt.stat().st_size/1e9:.2f} GB)")
+
+    # If it downloaded as the .pt directly (not zipped), move it into place
+    if not zipfile.is_zipfile(zip_path):
+        VGGT_PT.parent.mkdir(parents=True, exist_ok=True)
+        zip_path.rename(VGGT_PT)
+    else:
+        _unzip(zip_path, CKPT_ROOT)
+
+    if not VGGT_PT.exists():
+        print(f"ERROR: Expected {VGGT_PT} after download — check the file on Google Drive.")
+        sys.exit(1)
+
+    print(f"  VGGT-Omega ready: {VGGT_PT}  ({VGGT_PT.stat().st_size/1e9:.2f} GB)")
 
 
 def download_yolo() -> None:
+    import gdown
+
     if YOLO_PT.exists():
         print(f"  YOLO weights already present ({YOLO_PT}) — skipping.")
         return
 
-    if YOLO_SHARE_URL.startswith("PASTE"):
-        print("ERROR: Set YOLO_SHARE_URL in scripts/download_models.py first.")
-        sys.exit(1)
+    print("  Downloading YOLO office weights from Google Drive...")
+    dest = CKPT_ROOT / "yolo_office"
+    dest.mkdir(parents=True, exist_ok=True)
 
-    zip_path = CKPT_ROOT / "yolo_office.zip"
-    _download(_onedrive_direct(YOLO_SHARE_URL), zip_path, "YOLO office weights (~6 MB)")
-    _unzip(zip_path, CKPT_ROOT)
+    # Drive link is a folder — download all contents into dest
+    gdown.download_folder(id=YOLO_GDRIVE_ID, output=str(dest), quiet=False)
+
+    # Unzip if a zip landed in dest
+    for z in dest.glob("*.zip"):
+        _unzip(z, dest)
 
     if not YOLO_PT.exists():
-        print(f"ERROR: Expected {YOLO_PT} after unzip — check the zip structure.")
+        print(f"ERROR: Expected {YOLO_PT} after download — check the folder on Google Drive.")
         sys.exit(1)
+
     print(f"  YOLO weights ready: {YOLO_PT}")
 
 
 def main() -> None:
     print("=== Downloading model weights ===\n")
+    _ensure_gdown()
+
     print("[1/2] VGGT-Omega")
     download_vggt_omega()
+
     print("\n[2/2] YOLO office detector")
     download_yolo()
+
     print("\nAll weights ready.")
 
 
