@@ -157,14 +157,30 @@ def main() -> None:
     import numpy as np
 
     # Save full VGGT cloud for background visualisation in query.py.
-    # Keep top 50% by confidence, then voxel-downsample for uniform density.
+    # Keep top 60% by confidence, then SOR to remove spatial noise.
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
-    keep     = conf_all > np.percentile(conf_all, 50)
+    keep     = conf_all > np.percentile(conf_all, 40)
     xyz_bg, rgb_bg = xyz_all[keep], rgb_all[keep]
+
+    # SOR on background cloud: subsample to cap memory, then remove outliers
+    from scipy.spatial import cKDTree
+    MAX_BG = 200_000
+    if len(xyz_bg) > MAX_BG:
+        sub_idx = np.random.choice(len(xyz_bg), MAX_BG, replace=False)
+        xyz_s, rgb_s = xyz_bg[sub_idx], rgb_bg[sub_idx]
+    else:
+        xyz_s, rgb_s, sub_idx = xyz_bg, rgb_bg, np.arange(len(xyz_bg))
+    k = min(16, len(xyz_s) - 1)
+    tree = cKDTree(xyz_s)
+    dists, _ = tree.query(xyz_s, k=k + 1)
+    mean_d = dists[:, 1:].mean(axis=1)
+    sor_keep = mean_d < (mean_d.mean() + 2.0 * mean_d.std())
+    xyz_bg, rgb_bg = xyz_s[sor_keep], rgb_s[sor_keep]
+
     np.savez_compressed(args.out / "scene_cloud.npz", xyz=xyz_bg, rgb=rgb_bg)
-    print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter)")
+    print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter + SOR)")
 
     # Save intrinsics alongside the scene so query.py can draw camera frustums
     np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],
@@ -227,7 +243,7 @@ def _save_rrd(
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
-    keep     = conf_all > np.percentile(conf_all, 50)
+    keep     = conf_all > np.percentile(conf_all, 40)
     rgb_u8   = (np.clip(rgb_all[keep], 0, 1) * 255).astype(np.uint8)
     rr.log("world/photo", rr.Points3D(
         xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
@@ -270,7 +286,7 @@ def _save_geometry(geometry: dict, output_dir: Path) -> None:
              depth_conf=geometry["depth_conf"], intrinsics=geometry["intrinsics"])
 
     xyz, rgb, conf = geometry["xyz"], geometry["rgb"], geometry["xyz_conf"]
-    mask = conf > np.percentile(conf, 50)
+    mask = conf > np.percentile(conf, 40)
     xyz, rgb = xyz[mask], rgb[mask]
 
     tree = cKDTree(xyz)
