@@ -237,18 +237,19 @@ def _visualise_focused(
     ), static=True)
 
     # All points belonging to the queried label
+    # pts needed for segmentation overlay in the timeline loop below
     idxs = np.array(scene["label_index"][label], dtype=np.int64)
     pts  = scene["xyz"][idxs]
 
-    # Panel 4: only show points inside the (percentile-trimmed) bbox — removes outliers
+    # Panel 4: highlight ALL scene points inside the bbox, grey everything else
     bbox_min = result["bbox_min"]
     bbox_max = result["bbox_max"]
-    in_bbox  = np.all((pts >= bbox_min) & (pts <= bbox_max), axis=1)
-    pts_clean = pts[in_bbox]
+    in_bbox  = np.all((bg_xyz >= bbox_min) & (bg_xyz <= bbox_max), axis=1)
+
     rr.log("world/query_pts", rr.Points3D(
-        pts_clean,
-        colors=np.tile(colour, (len(pts_clean), 1)).astype(np.uint8),
-        radii=rr.Radius.ui_points(2.0),
+        bg_xyz[in_bbox],
+        colors=np.tile(colour, (in_bbox.sum(), 1)).astype(np.uint8),
+        radii=rr.Radius.ui_points(2.5),
     ), static=True)
 
     # Panel 5: OBB over photo-coloured scene

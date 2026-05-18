@@ -44,6 +44,96 @@ def load_scene(scene_dir: str | Path) -> dict:
     }
 
 
+def _clean_and_fit_obb(pts: np.ndarray, poses: np.ndarray) -> np.ndarray:
+    """Remove outliers and disconnected blobs from a label point cluster.
+
+    1. Statistical outlier removal (SOR) — kills mask-edge bleed and depth speckle.
+    2. Keep only the largest cluster by Euclidean distance — drops reflections /
+       occluded fragments that survive SOR but sit far from the main object.
+    """
+    from scipy.spatial import cKDTree
+
+    if len(pts) == 0:
+        return pts
+
+    # SOR: remove points whose mean k-NN distance exceeds mean + 2 sigma
+    k = min(20, len(pts) - 1)
+    tree = cKDTree(pts)
+    dists, _ = tree.query(pts, k=k + 1)
+    mean_d = dists[:, 1:].mean(axis=1)
+    keep = mean_d < (mean_d.mean() + 2.0 * mean_d.std())
+    pts = pts[keep]
+    if len(pts) == 0:
+        return pts
+
+    # Largest cluster: BFS/union-find via radius neighbours
+    # radius = 3× median NN distance — connects the object, splits far fragments
+    radius = float(np.median(mean_d[keep])) * 3.0
+    tree2  = cKDTree(pts)
+    pairs  = tree2.query_pairs(radius)
+
+    # Union-find
+    parent = list(range(len(pts)))
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for a, b in pairs:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    labels = np.array([find(i) for i in range(len(pts))])
+    counts = np.bincount(labels)
+    biggest = counts.argmax()
+    return pts[labels == biggest]
+
+
+def _gravity_aligned_obb(pts: np.ndarray, poses: np.ndarray) -> dict:
+    """Fit a gravity-aligned oriented bounding box.
+
+    Projects the cleaned point cluster onto the horizontal plane (up derived
+    from camera poses), fits cv2.minAreaRect to the 2D footprint, then
+    extrudes vertically — giving a flat, yaw-only rotated box.
+    """
+    import cv2
+    from scipy.spatial.transform import Rotation
+
+    up = (-poses[:, :3, 1]).mean(axis=0)   # avg camera up (negate OpenCV Y-down)
+    up = (up / np.linalg.norm(up)).astype(np.float64)
+
+    ref    = np.array([1.0, 0.0, 0.0]) if abs(up[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    horiz1 = np.cross(ref, up);  horiz1 /= np.linalg.norm(horiz1)
+    horiz2 = np.cross(up, horiz1)
+
+    pts_h1 = (pts @ horiz1).astype(np.float32)
+    pts_h2 = (pts @ horiz2).astype(np.float32)
+    pts_2d = np.stack([pts_h1, pts_h2], axis=1)
+
+    rect = cv2.minAreaRect(pts_2d)
+    (cx2, cy2), (rw, rh), angle_deg = rect
+    angle_rad = np.deg2rad(angle_deg)
+    cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+
+    obb_h1 = cos_a * horiz1 + sin_a * horiz2
+    obb_h2 = -sin_a * horiz1 + cos_a * horiz2
+
+    pts_up = pts @ up
+    v_mid  = (pts_up.min() + pts_up.max()) / 2.0
+    v_half = (pts_up.max() - pts_up.min()) / 2.0
+
+    center = (cx2 * horiz1 + cy2 * horiz2 + v_mid * up).astype(np.float32)
+    half   = np.array([rw / 2.0, rh / 2.0, v_half], dtype=np.float32)
+
+    R = np.stack([obb_h1, obb_h2, up], axis=1).astype(np.float64)
+    if np.linalg.det(R) < 0:
+        R[:, 1] = -R[:, 1]
+    quat = Rotation.from_matrix(R).as_quat().astype(np.float32)
+
+    return {"center": center, "half": half, "quat": quat}
+
+
 def query_object(scene: dict, label: str) -> dict:
     """Find a named object and return its 3D extent.
 
@@ -74,78 +164,19 @@ def query_object(scene: dict, label: str) -> dict:
     idxs = np.array(label_index[matched], dtype=np.int64)
     pts  = scene["xyz"][idxs]
 
-    # Trim per-axis outliers (5th–95th percentile) before computing bbox.
-    # Raw min/max blows up when a handful of noisy depth pixels land far
-    # from the true object — a common artefact at mask boundaries.
-    lo = np.percentile(pts, 5,  axis=0)
-    hi = np.percentile(pts, 95, axis=0)
-    inlier_mask = np.all((pts >= lo) & (pts <= hi), axis=1)
-    pts_clean   = pts[inlier_mask] if inlier_mask.any() else pts
+    pts_clean = _clean_and_fit_obb(pts, scene["poses"])
 
     center = pts_clean.mean(axis=0).astype(np.float32)
-
-    # Upright OBB via top-down minAreaRect.
-    # Project 3D footprint onto the horizontal plane defined by the average camera
-    # up-vector, fit the tightest rotated rectangle (cv2.minAreaRect), then extrude
-    # vertically from min to max height of the cleaned point cluster.
-    import cv2
-    from scipy.spatial.transform import Rotation
-
-    poses_arr = scene["poses"]
-    up = (-poses_arr[:, :3, 1]).mean(axis=0)   # avg camera up (negate OpenCV Y-down)
-    up = (up / np.linalg.norm(up)).astype(np.float64)
-
-    # Build two perpendicular horizontal axes
-    ref = np.array([1.0, 0.0, 0.0]) if abs(up[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
-    horiz1 = np.cross(ref, up)
-    horiz1 /= np.linalg.norm(horiz1)
-    horiz2 = np.cross(up, horiz1)
-    horiz2 /= np.linalg.norm(horiz2)
-
-    # Project points to horizontal plane → 2D footprint
-    pts_h1 = (pts_clean @ horiz1).astype(np.float32)
-    pts_h2 = (pts_clean @ horiz2).astype(np.float32)
-    pts_2d = np.stack([pts_h1, pts_h2], axis=1)
-
-    # Fit minimum-area rotated rectangle to the 2D footprint
-    rect = cv2.minAreaRect(pts_2d)   # (center_2d, (w, h), angle_deg)
-    rect_center_2d, (rw, rh), angle_deg = rect
-    angle_rad = np.deg2rad(angle_deg)
-
-    # OBB long axis in horizontal plane
-    cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
-    obb_h1 = cos_a * horiz1 + sin_a * horiz2   # local X
-    obb_h2 = -sin_a * horiz1 + cos_a * horiz2  # local Y
-
-    # Vertical extent along the up axis
-    pts_up  = pts_clean @ up
-    v_min, v_max = pts_up.min(), pts_up.max()
-    v_mid   = (v_min + v_max) / 2.0
-    v_half  = (v_max - v_min) / 2.0
-
-    # OBB centre in 3D
-    obb_center = (
-        rect_center_2d[0] * horiz1
-        + rect_center_2d[1] * horiz2
-        + v_mid * up
-    ).astype(np.float32)
-
-    obb_half = np.array([rw / 2.0, rh / 2.0, v_half], dtype=np.float32)
-
-    # Rotation matrix: columns = OBB local axes (X=obb_h1, Y=obb_h2, Z=up)
-    R = np.stack([obb_h1, obb_h2, up], axis=1).astype(np.float64)
-    if np.linalg.det(R) < 0:
-        R[:, 1] = -R[:, 1]
-    obb_quat = Rotation.from_matrix(R).as_quat().astype(np.float32)  # xyzw
+    obb    = _gravity_aligned_obb(pts_clean, scene["poses"])
 
     return {
         "label":        matched,
         "centroid":     center,
         "bbox_min":     pts_clean.min(axis=0).astype(np.float32),
         "bbox_max":     pts_clean.max(axis=0).astype(np.float32),
-        "obb_center":   obb_center,
-        "obb_half":     obb_half,
-        "obb_quat":     obb_quat,
+        "obb_center":   obb["center"],
+        "obb_half":     obb["half"],
+        "obb_quat":     obb["quat"],
         "n_points":     len(idxs),
         "confidence":   float(scene["confidence"][idxs].mean()),
         "indices":      idxs,
