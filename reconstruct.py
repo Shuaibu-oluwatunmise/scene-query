@@ -27,7 +27,7 @@ def parse_args() -> argparse.Namespace:
     src.add_argument("--images", type=Path, help="Directory of input images")
 
     p.add_argument("--out", type=Path, required=True, help="Output scene directory")
-    p.add_argument("--fps", type=float, default=5.0, help="Frame sample rate (video input only)")
+    p.add_argument("--fps", type=float, default=2.0, help="Frame sample rate (video input only)")
     p.add_argument("--max-frames", type=int, default=50,
                    help="Cap frames fed to VGGT (video input only) — quality degrades beyond ~50")
     p.add_argument(
