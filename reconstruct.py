@@ -188,7 +188,7 @@ def _save_rrd(
             rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
             rrb.Spatial3DView(
                 name="3D Reconstruction",
-                contents=["world/photo", "world/camera", "world/camera/**"],
+                contents=["world/photo", "world/camera"],
                 eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
                 background=bg,
             ),
