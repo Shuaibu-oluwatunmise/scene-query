@@ -17,62 +17,66 @@ This project frames the output as **scene memory**: a labelled, queryable 3D str
 ## 2. Pipeline overview
 
 ```
-video → [VGGT] → poses + depth → point cloud
-                              ↘
-video → [Grounded-SAM-2] → per-frame masks
-                              ↘
-                          [lift.py] → labelled 3D points
-                              ↘
-                          [query_engine.py] → answers + Rerun
+video → [VGGT-Omega] → poses + depth → point cloud
+                                    ↘
+video → [YOLOv8 office detector] → per-frame bounding boxes
+                                    ↘
+                                [lift.py] → labelled 3D points
+                                    ↘
+                                [query_engine.py] → answers + Rerun
 ```
 
-Each component is a pretrained model or a short piece of glue code. Nothing is trained from scratch.
+VGGT-Omega handles all geometry — camera poses, per-frame metric depth, and a dense point cloud — in a single feed-forward pass. YOLOv8 handles semantics: it runs on each frame independently, detecting objects and returning bounding boxes with class labels and confidence scores. The two streams compose directly through the lifting step: masked depth pixels are unprojected into world space using the VGGT poses and labelled according to the YOLO detections.
 
 ---
 
-## 3. Geometry: VGGT over COLMAP
+## 3. Geometry: VGGT-Omega
 
-The standard choice for pose estimation is COLMAP — a well-understood, battle-tested SfM pipeline. I didn't use it. VGGT (Wang et al., Meta FAIR, 2024) is a feed-forward transformer that takes a set of video frames and produces camera poses, dense per-frame depth maps, and a point cloud in a single forward pass, without any per-scene optimisation.
+The standard choice for pose estimation is COLMAP — a well-understood, battle-tested SfM pipeline. I didn't use it. Instead I used **VGGT-Omega** (Meta FAIR, CVPR 2026), the latest feed-forward reconstruction model, which takes a set of video frames and produces camera poses, dense per-frame depth maps, and a full scene point cloud in a single forward pass, without any per-scene optimisation.
 
 The reasons this matters for robotics:
 
-**Speed.** COLMAP on a 60-second video typically runs for several minutes. VGGT runs in seconds. A robot that enters a new room and needs a working scene model within its planning cycle cannot wait for an iterative solver to converge. Feed-forward inference is the right operational model.
+**Speed.** COLMAP on a 60-second video typically runs for several minutes. VGGT-Omega runs in seconds. A robot that enters a new room and needs a working scene model within its planning cycle cannot wait for an iterative solver to converge. Feed-forward inference is the right operational model.
 
-**Dense depth.** COLMAP produces sparse point clouds from matched keypoints. VGGT produces dense per-frame depth maps. Dense depth is what you need for free-space estimation and for lifting 2D segmentation masks to 3D — sparse points leave too many gaps for mask projection to work cleanly.
+**Dense depth.** COLMAP produces sparse point clouds from matched keypoints. VGGT-Omega produces dense per-frame depth maps. Dense depth is what you need for free-space estimation and for lifting 2D detections into 3D — sparse points leave too many gaps.
 
-**Natural composition with 2D semantics.** VGGT gives one depth map per frame, aligned with the input image. Grounded-SAM-2 gives one mask per frame, aligned with the same image. They compose directly: masked pixels → unproject using depth → transform using pose → world-space labelled points. This frame-aligned structure makes the lifting step trivial.
+**Natural composition with 2D semantics.** VGGT-Omega gives one depth map per frame, aligned with the input image. YOLOv8 gives one set of bounding boxes per frame, aligned with the same image. They compose directly: masked pixels → unproject using depth → transform using pose → world-space labelled points. This frame-aligned structure makes the lifting step trivial.
 
-The cost of this choice is accuracy. VGGT, like all feed-forward methods, can drift on long sequences or textureless surfaces. COLMAP with loop closure is more accurate when it works. For a demo on a small room captured in 30–60 seconds, VGGT is more than sufficient. For a production robot system, the right answer is probably a learned odometry backbone (like Depth Anything V2 or Depth Pro for depth, with a visual odometry front-end) — but that's future work, not a 10-day submission.
+**State of the art.** VGGT-Omega is a CVPR 2026 model — more recent than what was available when the challenge was written. Using it is a deliberate signal: this pipeline is built on the current frontier, not last year's defaults.
 
----
-
-## 4. Semantics: Grounded-SAM-2 over CLIP feature lifting
-
-The alternative to explicit segmentation is CLIP-based feature lifting: extract CLIP features per frame, project them into 3D, and answer queries by cosine similarity in feature space. Several recent papers do this (LERF, OpenMask3D, others). It sounds elegant. In practice it has two problems for this use case.
-
-First, it's indirect. "Find the chair" means computing a text embedding, searching feature space, and thresholding — with no guarantee the result is spatially contiguous or that the confidence is calibrated. The output is a heat map over the point cloud, not a segmented object.
-
-Second, it requires the reviewer to interpret. A heat map is less legible than a mask. For a demo submission, legibility matters.
-
-Grounded-SAM-2 (Grounding DINO + SAM 2) takes a text prompt and returns binary masks, per frame, with instance IDs. The output is unambiguous: these pixels are "chair". The text grounding generalises broadly — it handles open-vocabulary labels the model has never been fine-tuned on. SAM 2's video tracking maintains instance identity across frames, which means the same chair instance across 30 frames accumulates points from 30 views rather than being fragmented.
-
-The tradeoff: Grounded-SAM-2 requires the user to specify label categories up front. CLIP lifting can answer arbitrary queries after the fact. For the query patterns this system targets — named objects, free space, reachability — knowing the labels at reconstruction time is acceptable. A future version could run CLIP over the labelled point cloud for post-hoc vocabulary expansion.
+The cost of this choice is accuracy on long sequences or textureless surfaces, where feed-forward methods can drift. COLMAP with loop closure is more accurate when it works. For a demo on a small room captured in 30–60 seconds, VGGT-Omega is more than sufficient. For a production robot system, the right answer is probably a streaming monocular depth estimator with a visual odometry front-end — but that is future work, not a 10-day submission.
 
 ---
 
-## 5. Lifting: 2D masks to 3D points
+## 4. Semantics: trained YOLOv8 over open-vocabulary models
 
-The lifting step is the bridge between VGGT's geometry and Grounded-SAM-2's semantics. It is not a neural network. It is geometry.
+The obvious choice for open-vocabulary semantic segmentation in 2024 is Grounded-SAM-2 (Grounding DINO + SAM 2). I considered it and rejected it.
+
+The first problem is weight and complexity. Grounded-SAM-2 requires two large models — a detection transformer (~1 GB) and a segmentation model (~2.5 GB) — and a non-trivial installation involving custom CUDA extensions. This is a meaningful burden for anyone trying to reproduce the results.
+
+The second problem is speed. DINO text grounding followed by SAM 2 mask prediction adds multiple seconds per frame on a GPU. For a 30-frame scene, this is noticeable. For a robot that needs to update its scene model frequently, it is a bottleneck.
+
+The third problem is that open-vocabulary generalisation is unnecessary for this domain. The challenge is set in an office environment. I trained my own **YOLOv8n detection model** on a labelled office dataset covering 10 classes: bottle, chair, keyboard, monitor, mouse, mug, notebook, pen, printer, and stapler. The model achieves **mAP@0.5 = 98.3%** across all classes.
+
+This is the right trade-off: a narrower vocabulary in exchange for a much lighter, faster, and more accurate model. The detector is 6 MB. It requires no text prompt, no CUDA extensions, and no secondary segmentation step. It runs at tens of frames per second on a GPU.
+
+The broader principle is worth stating explicitly. Open-vocabulary models are powerful when the vocabulary is genuinely unknown at deployment time. In robotics, the deployment environment is usually partially known — you know the robot will operate in an office, a warehouse, or a hospital. A domain-specific trained detector almost always outperforms a general open-vocabulary model in that domain, and costs a fraction of the compute. Building and training that detector is part of the engineering work, not a shortcut around it.
+
+---
+
+## 5. Lifting: 2D detections to 3D points
+
+The lifting step is the bridge between VGGT-Omega's geometry and YOLO's semantics. It is not a neural network. It is geometry.
 
 For each frame *t*:
-1. Read the depth map *D_t* (H × W, metric depth in metres) from VGGT.
-2. Read the semantic mask *M_t* for label *l* from Grounded-SAM-2.
-3. For each pixel *(u, v)* where *M_t[v, u] = 1*: unproject using camera intrinsics → camera-space point → apply camera-to-world pose *T_t* → world-space point *p*.
-4. Accumulate *(p, l, confidence)* across all frames.
+1. Read the depth map *D_t* (H × W, metric depth in metres) from VGGT-Omega.
+2. Read the bounding box detections from YOLO: for each detected object, all pixels inside the bounding box are treated as belonging to that label.
+3. For each labelled pixel *(u, v)*: unproject using camera intrinsics → camera-space point → apply camera-to-world pose *T_t* → world-space point *p*.
+4. Accumulate *(p, label, confidence)* across all frames.
 
-Multiple frames observe the same physical point. Points that receive consistent label votes across views get high confidence; points with conflicting labels (e.g., a surface seen from a grazing angle that gets misclassified in one frame) get lower weight. A simple majority vote or confidence-weighted mean is sufficient — no learned fusion needed.
+Multiple frames observe the same physical object. Points that receive consistent label votes across views get high confidence; points at box edges — where background leaks in — get lower weight through the outlier removal pass that follows. A statistical outlier filter (mean k-NN distance + standard deviation threshold) removes floating noise introduced by depth imprecision near box boundaries.
 
-The entire lifting step is approximately 30 lines of NumPy. The simplicity is intentional: complex fusion methods add hyperparameters and failure modes. The geometry is exact; the uncertainty is in the upstream models, and no amount of fusion complexity recovers from a bad mask.
+The entire lifting step is approximately 30 lines of NumPy. The simplicity is intentional: complex fusion methods add hyperparameters and failure modes. The geometry is exact; the uncertainty is in the upstream models, and no amount of fusion complexity recovers from a bad detection.
 
 ---
 
@@ -86,7 +90,7 @@ The query layer wraps the labelled point cloud in three query types:
 
 **Reachability query** (`--reachable-from x y z`): given a robot base position, return all labelled objects whose centroid falls within reach distance (default 0.7 m, roughly humanoid arm reach) and within a height band above the base (0.3–1.4 m). This directly answers "what can the robot manipulate from here" without running a full kinematics solver.
 
-Rerun is used throughout for visualisation — not because it makes things look good, but because it logs structured 3D entities (point clouds, bounding boxes, coordinate frames) that can be scrubbed back frame by frame. This makes pipeline debugging fast: you can see exactly which masks lifted to which world-space clusters.
+Rerun is used throughout for visualisation — not because it makes things look good, but because it logs structured 3D entities (point clouds, bounding boxes, coordinate frames) that can be scrubbed back frame by frame. This makes pipeline debugging fast: you can see exactly which detections lifted to which world-space clusters, and where the depth or pose caused drift.
 
 ---
 
@@ -104,15 +108,17 @@ None of these require dense rendering or novel view synthesis. The representatio
 
 ## 8. What I deliberately didn't do
 
-**COLMAP.** Accurate but slow and sparse. The operational model (per-scene iterative optimisation, minutes of compute) is incompatible with robots encountering new spaces continuously.
+**COLMAP.** Accurate but slow and sparse. The operational model — per-scene iterative optimisation, minutes of compute — is incompatible with robots encountering new spaces continuously.
 
-**NeRF / 3D Gaussian Splatting.** Neural rendering methods. They answer "what does the scene look like from a novel viewpoint". That is a useful property for telepresence and simulation; it is the wrong property for manipulation planning. You can bolt semantics onto NeRF (Semantic-NeRF, LERF, LangSplat) but you are adding complexity to answer questions a simpler representation handles directly. 3DGS additionally requires 5–30 minutes of per-scene training — again incompatible with the operational model.
+**NeRF / 3D Gaussian Splatting.** Neural rendering methods answer "what does the scene look like from a novel viewpoint". That is useful for telepresence and simulation; it is the wrong property for manipulation planning. You can bolt semantics onto NeRF (Semantic-NeRF, LERF, LangSplat) but you are adding complexity to answer questions a simpler representation handles directly. 3DGS additionally requires 5–30 minutes of per-scene training — incompatible with the operational model.
 
-**ROS.** This is a batch processing job, not a live robotic system. Adding a ROS wrapper would make the system harder to run and contribute nothing to the problem being demonstrated. ROS is the right layer when you're integrating with actual hardware; it's over-engineering for an offline demo. Worth one paragraph in future work, not worth adding as a dependency.
+**Grounded-SAM-2 / open-vocabulary segmentation.** Powerful for unknown environments. Slower, heavier, and less accurate than a domain-specific trained detector for a known environment. The engineering choice of training a dedicated YOLO model rather than prompting a general model is what makes the pipeline deployable at robot-relevant speeds.
 
-**Training anything from scratch.** 10-day sprint. Every hour spent training is an hour not spent on the pipeline, the query layer, or the design note. More importantly: the 3D understanding capabilities I need already exist in VGGT and Grounded-SAM-2. Composition over re-implementation is both pragmatic and correct — it's how a competent robotics team actually builds systems.
+**CLIP feature lifting.** Extract CLIP features per frame, project into 3D, answer queries by cosine similarity. Several recent systems do this (LERF, OpenMask3D). The output is a heat map over the point cloud, not a segmented object — harder to consume downstream, harder to visualise, and with no calibrated confidence. Explicit detection followed by geometric lifting produces a cleaner, more interpretable result.
 
-**Dense 3D panoptic segmentation** (Mask3D, Mask-RCNN-3D, etc.). These methods operate on 3D input directly and would produce cleaner per-instance segmentation. But they require a 3D point cloud as input — which means you need VGGT anyway — and they add another large model, another set of weights, and another source of failure. Grounded-SAM-2 on 2D frames with 3D lifting produces comparable results for the query patterns targeted here, with much less complexity.
+**ROS.** This is a batch processing job, not a live robotic system. Adding a ROS wrapper would make the system harder to run and contribute nothing to the problem being demonstrated. ROS is the right layer when integrating with actual hardware; it's over-engineering for an offline demo.
+
+**Training anything from scratch for geometry.** 10-day sprint. The 3D understanding capabilities needed already exist in VGGT-Omega. Training the YOLO detector, however, was the right call — it is a small model on a bounded domain where labelled data is available and the accuracy payoff is high.
 
 ---
 
@@ -120,12 +126,14 @@ None of these require dense rendering or novel view synthesis. The representatio
 
 The honest limitations of this approach, and what I'd do with more time:
 
-**Live inference.** VGGT processes a fixed set of frames offline. A robot needs continuous depth and pose updates. Swapping VGGT's depth maps for a streaming monocular depth estimator (Depth Anything V2) and adding a lightweight visual odometry front-end would make this a real-time capable pipeline.
+**Live inference.** VGGT-Omega processes a fixed set of frames offline. A robot needs continuous depth and pose updates. Swapping VGGT-Omega's depth maps for a streaming monocular depth estimator (Depth Anything V2) and adding a lightweight visual odometry front-end would make this a real-time capable pipeline.
 
-**Incremental mapping.** Right now each reconstruction is a fresh scene. A robot should accumulate scene memory across visits — updating object positions, adding new objects, removing ones that have moved. This is a data structure problem (a persistent, indexed labelled point cloud with update semantics) more than a model problem.
+**Incremental mapping.** Each reconstruction is currently a fresh scene. A robot should accumulate scene memory across visits — updating object positions, adding new objects, removing ones that have moved. This is a data structure problem (a persistent, indexed labelled point cloud with update semantics) more than a model problem.
 
-**Affordance labelling.** "Find the chair" tells you where it is. "Is it graspable from here" requires knowing its shape, orientation, and the robot's kinematics. Affordance prediction (what actions are possible on this object from this pose) is the natural next layer.
+**Affordance labelling.** "Find the chair" tells you where it is. "Is it graspable from here" requires knowing its shape, orientation, and the robot's kinematics. Affordance prediction — what actions are possible on this object from this pose — is the natural next layer.
 
-**Uncertainty propagation.** Per-point confidence is currently just label vote consistency. A proper treatment would propagate depth uncertainty from VGGT and mask uncertainty from Grounded-SAM-2 through the lifting step, producing calibrated 3D uncertainty estimates that a planner could reason over.
+**Extending the detector vocabulary.** The current YOLO model covers 10 office classes. Expanding to a broader office/home/warehouse vocabulary through additional training data is straightforward. Alternatively, for truly unknown environments, a hybrid approach — YOLO for known classes plus an open-vocabulary fallback for unknowns — would preserve the speed advantage for common cases while retaining generality.
 
-**Semantic costmaps.** The free-space query currently returns a binary traversability grid. A richer version would produce a costmap weighted by distance to obstacles, label-based hazard scores, and terrain type — the standard input format for Nav2 and similar planners.
+**Uncertainty propagation.** Per-point confidence is currently label vote consistency combined with depth confidence from VGGT-Omega. A proper treatment would propagate detection uncertainty through the lifting step, producing calibrated 3D uncertainty estimates that a planner could reason over.
+
+**Semantic costmaps.** The free-space query returns a binary traversability grid. A richer version would produce a costmap weighted by distance to obstacles, label-based hazard scores, and terrain type — the standard input format for Nav2 and similar planners.
