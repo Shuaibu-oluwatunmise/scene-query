@@ -47,9 +47,16 @@ The YOLO model is trained on 10 office classes with mAP@0.5 = 98.3%. Weights shi
 
 ### Prerequisites
 
+**For `reconstruct.py` (scene building — GPU machine required):**
 - Python 3.10+
-- CUDA GPU with ≥ 16 GB VRAM for `reconstruct.py`
-- `query.py` runs fine on CPU / laptop — no GPU needed
+- CUDA GPU with ≥ 16 GB VRAM (tested: A100 80 GB, RTX 6000 Ada 48 GB)
+- CUDA driver 11.8+ (check yours: `nvidia-smi`, version shown top-right)
+- PyTorch installed with matching CUDA version (see step 1)
+
+**For `query.py` (querying pre-built scenes — runs on any machine):**
+- Python 3.10+, no GPU needed
+
+---
 
 ### 1. Clone
 
@@ -58,14 +65,22 @@ git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
 cd scene-query
 ```
 
-### 2. Install PyTorch
+### 2. Install PyTorch (GPU machine only)
 
-Pick the version matching your CUDA driver (`nvidia-smi` shows it in the top-right):
+Find your CUDA version with `nvidia-smi` (top-right corner), then install the matching build:
 
 ```bash
-# CUDA 12.4 — find yours at https://pytorch.org/get-started/locally/
+# CUDA 12.4
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+# CUDA 12.1
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# CUDA 11.8
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 ```
+
+Full list: https://pytorch.org/get-started/locally/
 
 ### 3. Run setup
 
@@ -73,7 +88,7 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 python setup.py
 ```
 
-This installs all Python dependencies and downloads VGGT-Omega weights (~4.3 GB) from Google Drive. YOLO weights are already in the repo — no extra download needed.
+This checks your PyTorch/CUDA install, downloads VGGT-Omega weights (~4.3 GB) from Google Drive, and installs all Python dependencies. YOLO weights ship in the repo — no separate download needed.
 
 ### 4. Reconstruct
 
@@ -84,12 +99,16 @@ python reconstruct.py \
     --save-rrd outputs/scene1.rrd
 ```
 
+This extracts frames, runs VGGT-Omega for geometry, detects objects with YOLO, lifts detections into 3D, and saves everything to `outputs/scene1/`. The `--save-rrd` flag also writes a Rerun recording with 3 panels (raw camera | detections overlay | 3D scene).
+
 ### 5. Query
 
 ```bash
 python query.py outputs/scene1 "find the chair" --save-rrd outputs/query.rrd
 python -m rerun outputs/query.rrd
 ```
+
+Query runs entirely on CPU — no models loaded. Download `outputs/scene1/` and `outputs/query.rrd` to your laptop to view.
 
 ---
 
