@@ -84,6 +84,7 @@ def _save_frames(frames: list, frames_dir: Path) -> None:
     print(f"  Frames saved -> {frames_dir}/")
 
 
+
 def main() -> None:
     args = parse_args()
     labels = [l.strip() for l in args.labels.split(",")]
@@ -169,144 +170,68 @@ def _save_rrd(
     scene: dict,
     rrd_path: Path,
 ) -> None:
-    """Write a Rerun .rrd recording with:
-    - Timeline: original frame, segmentation overlay, moving camera frustum
-    - Static: full label-coloured 3-D point cloud + per-label sub-clouds
+    """Write a Rerun .rrd with 2 panels:
+    - Left:  original camera feed playing as video (timeline)
+    - Right: photo-coloured 3D scene with camera moving through it (timeline)
     """
-    import cv2
     import numpy as np
     import rerun as rr
     import rerun.blueprint as rrb
+    import rerun.blueprint.archetypes as ba
+
+    bg = [20, 20, 20]
 
     blueprint = rrb.Blueprint(
-        rrb.Vertical(
-            # Top row: three 3D views
-            rrb.Horizontal(
-                rrb.Spatial3DView(
-                    name="Original",
-                    contents=["world/photo_colours", "world/camera", "world/camera/**"],
-                ),
-                rrb.Spatial3DView(
-                    name="Process — semantics",
-                    contents=["world/label_colours", "world/labels/**",
-                              "world/camera", "world/camera/**"],
-                ),
-                rrb.Spatial3DView(
-                    name="Result — objects",
-                    contents=["world/photo_colours", "world/bboxes/**",
-                              "world/camera", "world/camera/**"],
-                ),
+        rrb.Horizontal(
+            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+            rrb.Spatial3DView(
+                name="3D Reconstruction",
+                contents=["world/photo", "world/camera", "world/camera/**"],
+                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                background=bg,
             ),
-            # Bottom row: 2D camera feed + segmentation overlay
-            rrb.Horizontal(
-                rrb.Spatial2DView(name="Camera feed",    contents=["camera/rgb"]),
-                rrb.Spatial2DView(name="Segmentation",   contents=["camera/segmentation"]),
-            ),
-            row_shares=[3, 2],
         ),
         collapse_panels=True,
         auto_views=False,
     )
 
-    rr.init("scene-query", spawn=False, default_blueprint=blueprint)
+    rr.init("scene-query", spawn=False)
     rr.save(str(rrd_path))
+    rr.send_blueprint(blueprint, make_active=True, make_default=True)
+    rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
 
-    H_d, W_d = geometry["image_size"]   # VGGT depth resolution
+    H_d, W_d = geometry["image_size"]
 
-    # --- Static: labelled 3-D point cloud ---
-    label_colours = np.array(
-        [_label_colour(str(l)) for l in scene["label"]],
-        dtype=np.uint8,
-    )
-    # Build label -> indices from the in-memory label array
-    label_index: dict[str, list[int]] = {}
-    for idx, lbl in enumerate(scene["label"]):
-        label_index.setdefault(str(lbl), []).append(idx)
+    # Static: full photo-coloured point cloud
+    xyz_all  = geometry["xyz"]
+    rgb_all  = geometry["rgb"]
+    conf_all = geometry["xyz_conf"]
+    keep     = conf_all > np.percentile(conf_all, 25)
+    rgb_u8   = (np.clip(rgb_all[keep], 0, 1) * 255).astype(np.uint8)
+    rr.log("world/photo", rr.Points3D(
+        xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
+    ), static=True)
 
-    # Original photo colours — shows the scene as it actually looks
-    rgb_u8 = (np.clip(scene["rgb"], 0, 1) * 255).astype(np.uint8)
-    rr.log("world/photo_colours", rr.Points3D(scene["xyz"], colors=rgb_u8, radii=0.003),
-           static=True)
-
-    # Semantic label colours — one colour per object class
-    rr.log("world/label_colours", rr.Points3D(scene["xyz"], colors=label_colours, radii=0.003),
-           static=True)
-
-    # Per-label sub-clouds (toggleable in the entity panel)
-    for lbl, idxs in label_index.items():
-        idx_arr = np.array(idxs, dtype=np.int64)
-        colour  = _label_colour(lbl)
-        pts     = scene["xyz"][idx_arr]
-        rr.log(
-            f"world/labels/{lbl}",
-            rr.Points3D(
-                pts,
-                colors=np.tile(colour, (len(idx_arr), 1)).astype(np.uint8),
-                radii=0.003,
-            ),
-            static=True,
-        )
-
-        # Tight bounding box per label (5th–95th percentile, no outlier blow-up)
-        lo = np.percentile(pts, 5,  axis=0)
-        hi = np.percentile(pts, 95, axis=0)
-        inliers   = np.all((pts >= lo) & (pts <= hi), axis=1)
-        pts_clean = pts[inliers] if inliers.any() else pts
-        rr.log(
-            f"world/bboxes/{lbl}",
-            rr.Boxes3D(
-                mins=[pts_clean.min(axis=0).tolist()],
-                sizes=[(pts_clean.max(axis=0) - pts_clean.min(axis=0)).tolist()],
-                colors=[colour],
-                labels=[lbl],
-            ),
-            static=True,
-        )
-
-    # --- Per-frame timeline ---
+    # Per-frame timeline
     for i, frame in enumerate(frames):
         rr.set_time("frame", sequence=i)
 
         H_orig, W_orig = frame.shape[:2]
-
-        # Original RGB frame
         rr.log("camera/rgb", rr.Image(frame))
 
-        # Segmentation overlay: blend label colours onto the frame
-        overlay = frame.astype(float)
-        for det in masks_per_frame[i]:
-            mask = det["mask"]          # (H_orig, W_orig) bool from SAM 2
-            colour = np.array(_label_colour(det["label"]), dtype=float)
-            overlay[mask] = overlay[mask] * 0.35 + colour * 0.65
-        rr.log("camera/segmentation", rr.Image(overlay.astype(np.uint8)))
+        pose = geometry["poses"][i]
+        K    = geometry["intrinsics"][i]
+        sx, sy = W_orig / W_d, H_orig / H_d
 
-        # Camera frustum in 3-D world space
-        pose = geometry["poses"][i]     # (4, 4) camera-to-world
-        K    = geometry["intrinsics"][i]  # (3, 3) at VGGT resolution
-
-        # Scale intrinsics from VGGT depth resolution to original frame size
-        sx = W_orig / W_d
-        sy = H_orig / H_d
-        fx, fy = float(K[0, 0]) * sx, float(K[1, 1]) * sy
-        cx, cy = float(K[0, 2]) * sx, float(K[1, 2]) * sy
-
-        rr.log(
-            "world/camera",
-            rr.Transform3D(
-                translation=pose[:3, 3].tolist(),
-                mat3x3=pose[:3, :3].tolist(),
-            ),
-        )
-        rr.log(
-            "world/camera",
-            rr.Pinhole(
-                focal_length=[fx, fy],
-                principal_point=[cx, cy],
-                width=W_orig,
-                height=H_orig,
-            ),
-        )
-        # Image projected through the frustum in the 3-D view
+        rr.log("world/camera", rr.Transform3D(
+            translation=pose[:3, 3].tolist(),
+            mat3x3=pose[:3, :3].tolist(),
+        ))
+        rr.log("world/camera", rr.Pinhole(
+            focal_length=[float(K[0, 0]) * sx, float(K[1, 1]) * sy],
+            principal_point=[float(K[0, 2]) * sx, float(K[1, 2]) * sy],
+            width=W_orig, height=H_orig,
+        ))
         rr.log("world/camera/image", rr.Image(frame))
 
     print(f"Saved -> {rrd_path}")

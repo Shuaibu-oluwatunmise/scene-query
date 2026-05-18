@@ -83,34 +83,60 @@ def query_object(scene: dict, label: str) -> dict:
     pts_clean   = pts[inlier_mask] if inlier_mask.any() else pts
 
     center = pts_clean.mean(axis=0).astype(np.float32)
-    centered = pts_clean - center
 
-    # Upright OBB: PCA only in horizontal plane, vertical axis from camera poses.
-    # Full 3D PCA picks up depth noise and tilts the box — constraining to yaw-only
-    # rotation gives a box that sits flat and aligns with the object's footprint.
+    # Upright OBB via top-down minAreaRect.
+    # Project 3D footprint onto the horizontal plane defined by the average camera
+    # up-vector, fit the tightest rotated rectangle (cv2.minAreaRect), then extrude
+    # vertically from min to max height of the cleaned point cluster.
+    import cv2
     from scipy.spatial.transform import Rotation
 
     poses_arr = scene["poses"]
     up = (-poses_arr[:, :3, 1]).mean(axis=0)   # avg camera up (negate OpenCV Y-down)
     up = (up / np.linalg.norm(up)).astype(np.float64)
 
-    # Remove vertical component, run PCA in the horizontal plane
-    centered_horiz = centered - np.outer(centered @ up, up)
-    _, evecs = np.linalg.eigh(np.cov(centered_horiz.T))  # ascending eigenvalues
-    horiz1 = evecs[:, 2]                        # largest horizontal variance
-    horiz1 -= (horiz1 @ up) * up               # ensure perpendicular to up
+    # Build two perpendicular horizontal axes
+    ref = np.array([1.0, 0.0, 0.0]) if abs(up[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    horiz1 = np.cross(ref, up)
     horiz1 /= np.linalg.norm(horiz1)
     horiz2 = np.cross(up, horiz1)
     horiz2 /= np.linalg.norm(horiz2)
 
-    R = np.stack([horiz1, up, horiz2], axis=1).astype(np.float32)
+    # Project points to horizontal plane → 2D footprint
+    pts_h1 = (pts_clean @ horiz1).astype(np.float32)
+    pts_h2 = (pts_clean @ horiz2).astype(np.float32)
+    pts_2d = np.stack([pts_h1, pts_h2], axis=1)
+
+    # Fit minimum-area rotated rectangle to the 2D footprint
+    rect = cv2.minAreaRect(pts_2d)   # (center_2d, (w, h), angle_deg)
+    rect_center_2d, (rw, rh), angle_deg = rect
+    angle_rad = np.deg2rad(angle_deg)
+
+    # OBB long axis in horizontal plane
+    cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+    obb_h1 = cos_a * horiz1 + sin_a * horiz2   # local X
+    obb_h2 = -sin_a * horiz1 + cos_a * horiz2  # local Y
+
+    # Vertical extent along the up axis
+    pts_up  = pts_clean @ up
+    v_min, v_max = pts_up.min(), pts_up.max()
+    v_mid   = (v_min + v_max) / 2.0
+    v_half  = (v_max - v_min) / 2.0
+
+    # OBB centre in 3D
+    obb_center = (
+        rect_center_2d[0] * horiz1
+        + rect_center_2d[1] * horiz2
+        + v_mid * up
+    ).astype(np.float32)
+
+    obb_half = np.array([rw / 2.0, rh / 2.0, v_half], dtype=np.float32)
+
+    # Rotation matrix: columns = OBB local axes (X=obb_h1, Y=obb_h2, Z=up)
+    R = np.stack([obb_h1, obb_h2, up], axis=1).astype(np.float64)
     if np.linalg.det(R) < 0:
-        R[:, 2] = -R[:, 2]  # ensure right-handed frame
-    projected = centered @ R
-    proj_center = (projected.max(axis=0) + projected.min(axis=0)) / 2
-    obb_center  = (center + R @ proj_center).astype(np.float32)
-    obb_half    = ((projected.max(axis=0) - projected.min(axis=0)) / 2).astype(np.float32)
-    obb_quat    = Rotation.from_matrix(R).as_quat().astype(np.float32)  # xyzw
+        R[:, 1] = -R[:, 1]
+    obb_quat = Rotation.from_matrix(R).as_quat().astype(np.float32)  # xyzw
 
     return {
         "label":        matched,

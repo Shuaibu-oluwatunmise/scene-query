@@ -192,7 +192,7 @@ def _visualise_focused(
                 ),
                 rrb.Spatial2DView(name=f"Segmentation — {label}", contents=["camera/segmentation"]),
             ),
-            # Bottom row: static overview panels, both start from first camera POV
+            # Bottom row: static overview panels
             rrb.Horizontal(
                 rrb.Spatial3DView(
                     name=f"Objects — {label}",
