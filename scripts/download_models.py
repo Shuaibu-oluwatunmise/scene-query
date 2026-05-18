@@ -34,6 +34,13 @@ def _unzip(zip_path: Path, dest_dir: Path) -> None:
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(dest_dir)
     zip_path.unlink()
+    # If zip extracted into a single subdirectory, flatten it into dest_dir
+    children = [p for p in dest_dir.iterdir()]
+    if len(children) == 1 and children[0].is_dir():
+        sub = children[0]
+        for item in sub.iterdir():
+            item.rename(dest_dir / item.name)
+        sub.rmdir()
 
 
 def download_vggt_omega() -> None:
