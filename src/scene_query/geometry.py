@@ -236,9 +236,10 @@ def _run_vggt_omega(frames, model, device):
     extrinsics_t, intrinsics_t = encoding_to_camera(
         preds["pose_enc"], preds["images"].shape[-2:]
     )
-    # encoding_to_camera returns (N, 3, 4) extrinsic (world-to-cam) and (N, 3, 3) intrinsic
-    extri = extrinsics_t.cpu().float().numpy()   # (N, 3, 4)
-    intri = intrinsics_t.cpu().float().numpy()   # (N, 3, 3)
+    # encoding_to_camera output shape matches pose_enc leading dims:
+    # pose_enc (1, N, 9) -> extrinsics (1, N, 3, 4), intrinsics (1, N, 3, 3)
+    extri = extrinsics_t[0].cpu().float().numpy()   # (N, 3, 4) world-to-cam
+    intri = intrinsics_t[0].cpu().float().numpy()   # (N, 3, 3)
 
     N = len(extri)
     poses = np.eye(4, dtype=np.float32)[None].repeat(N, 0)
@@ -249,13 +250,19 @@ def _run_vggt_omega(frames, model, device):
     poses[:, :3, :3] = R_inv
     poses[:, :3, 3] = t_inv
 
-    depth      = preds["depth"].cpu().float().numpy()       # (N, H, W) or (N, H, W, 1)
-    depth_conf = preds["depth_conf"].cpu().float().numpy()  # (N, H, W) or (N, H, W, 1)
-    if depth.ndim == 4:
-        depth      = depth[..., 0]
-        depth_conf = depth_conf[..., 0]
+    depth_t = preds["depth"]
+    depth_conf_t = preds["depth_conf"]
+    # Handle (1, N, H, W, 1), (1, N, H, W), or (N, H, W) variants
+    if depth_t.dim() == 5:
+        depth_t = depth_t[0, :, :, :, 0]
+        depth_conf_t = depth_conf_t[0]
+    elif depth_t.dim() == 4 and depth_t.shape[0] == 1:
+        depth_t = depth_t[0]
+        depth_conf_t = depth_conf_t[0]
+    depth      = depth_t.cpu().float().numpy()       # (N, H, W)
+    depth_conf = depth_conf_t.cpu().float().numpy()  # (N, H, W)
 
-    rgb_np = preds["images"].cpu().float().numpy()          # (N, 3, H, W)
+    rgb_np = preds["images"][0].cpu().float().numpy()   # (N, 3, H, W)
 
     xyz, rgb, xyz_conf = _depth_to_pointcloud(depth, depth_conf, intri, poses, rgb_np)
 

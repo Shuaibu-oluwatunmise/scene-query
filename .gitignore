@@ -17,12 +17,13 @@ env/
 .DS_Store
 Thumbs.db
 
-# Model checkpoints (downloaded fresh per env)
+# Model checkpoints — weights gitignored (too large), training artifacts kept
 checkpoints/*
 !checkpoints/README.md
+!checkpoints/yolo_office/
+checkpoints/yolo_office/*.pt
+checkpoints/yolo_office/*.pth
 weights/
-*.pt
-*.pth
 *.ckpt
 *.safetensors
 
