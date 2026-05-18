@@ -233,11 +233,26 @@ def _run_vggt_omega(frames, model, device):
     with torch.inference_mode():
         preds = model(images)
 
+    # Extract depth first so we know its spatial resolution
+    depth_t = preds["depth"]
+    depth_conf_t = preds["depth_conf"]
+    # Handle (1, N, H, W, 1), (1, N, H, W), or (N, H, W) output variants
+    if depth_t.dim() == 5:
+        depth_t = depth_t[0, :, :, :, 0]
+        depth_conf_t = depth_conf_t[0]
+    elif depth_t.dim() == 4 and depth_t.shape[0] == 1:
+        depth_t = depth_t[0]
+        depth_conf_t = depth_conf_t[0]
+    depth      = depth_t.cpu().float().numpy()       # (N, H_d, W_d)
+    depth_conf = depth_conf_t.cpu().float().numpy()  # (N, H_d, W_d)
+    H_d, W_d = depth.shape[-2:]
+
+    # Build intrinsics for the depth resolution — FOV angles are resolution-invariant,
+    # so passing (H_d, W_d) gives correct pixel-space focal lengths for unprojection.
     extrinsics_t, intrinsics_t = encoding_to_camera(
-        preds["pose_enc"], preds["images"].shape[-2:]
+        preds["pose_enc"], (H_d, W_d)
     )
-    # encoding_to_camera output shape matches pose_enc leading dims:
-    # pose_enc (1, N, 9) -> extrinsics (1, N, 3, 4), intrinsics (1, N, 3, 3)
+    # pose_enc (1, N, 9) -> (1, N, 3, 4) and (1, N, 3, 3)
     extri = extrinsics_t[0].cpu().float().numpy()   # (N, 3, 4) world-to-cam
     intri = intrinsics_t[0].cpu().float().numpy()   # (N, 3, 3)
 
@@ -250,19 +265,13 @@ def _run_vggt_omega(frames, model, device):
     poses[:, :3, :3] = R_inv
     poses[:, :3, 3] = t_inv
 
-    depth_t = preds["depth"]
-    depth_conf_t = preds["depth_conf"]
-    # Handle (1, N, H, W, 1), (1, N, H, W), or (N, H, W) variants
-    if depth_t.dim() == 5:
-        depth_t = depth_t[0, :, :, :, 0]
-        depth_conf_t = depth_conf_t[0]
-    elif depth_t.dim() == 4 and depth_t.shape[0] == 1:
-        depth_t = depth_t[0]
-        depth_conf_t = depth_conf_t[0]
-    depth      = depth_t.cpu().float().numpy()       # (N, H, W)
-    depth_conf = depth_conf_t.cpu().float().numpy()  # (N, H, W)
-
-    rgb_np = preds["images"][0].cpu().float().numpy()   # (N, 3, H, W)
+    # Get RGB from model's processed images; resize to depth resolution if needed
+    rgb_np = preds["images"][0].cpu().float().numpy()   # (N, 3, H_img, W_img)
+    if rgb_np.shape[-2:] != (H_d, W_d):
+        import torch.nn.functional as F
+        rgb_t = torch.from_numpy(rgb_np)
+        rgb_t = F.interpolate(rgb_t, size=(H_d, W_d), mode="bilinear", align_corners=False)
+        rgb_np = rgb_t.numpy()
 
     xyz, rgb, xyz_conf = _depth_to_pointcloud(depth, depth_conf, intri, poses, rgb_np)
 
