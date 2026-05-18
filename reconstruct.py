@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
         default="chair,table,sofa,door,window,bed,desk",
         help="Comma-separated object labels for Grounded-SAM-2",
     )
-    p.add_argument("--weights-vggt", type=Path, default=Path("checkpoints/vggt"),
+    p.add_argument("--weights-vggt", type=Path, default=Path("checkpoints/vggt_omega"),
                    help="VGGT weights directory")
     p.add_argument("--weights-gdino", type=Path, default=None,
                    help="Grounding DINO weights directory (default: checkpoints/grounding_dino/)")
