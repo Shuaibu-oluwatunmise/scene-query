@@ -164,7 +164,16 @@ def query_object(scene: dict, label: str) -> dict:
     idxs = np.array(label_index[matched], dtype=np.int64)
     pts  = scene["xyz"][idxs]
 
-    pts_clean = _clean_and_fit_obb(pts, scene["poses"])
+    # Subsample before SOR to cap memory — cKDTree on millions of points OOMs.
+    # 50K points is plenty for a representative bbox.
+    MAX_SOR = 50_000
+    if len(pts) > MAX_SOR:
+        sub = np.random.choice(len(pts), MAX_SOR, replace=False)
+        pts_sor = pts[sub]
+    else:
+        pts_sor = pts
+
+    pts_clean = _clean_and_fit_obb(pts_sor, scene["poses"])
 
     center = pts_clean.mean(axis=0).astype(np.float32)
     obb    = _gravity_aligned_obb(pts_clean, scene["poses"])
