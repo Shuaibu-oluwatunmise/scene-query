@@ -12,8 +12,8 @@ import zipfile
 from pathlib import Path
 
 # Google Drive file/folder IDs
-VGGT_GDRIVE_ID  = "1K2kK6ZiL93V06uZOH4D5oE-TzQAdLDHM"   # vggt_omega zip (~4.3 GB)
-YOLO_GDRIVE_ID  = "1aeM2GtvtdwIXH-pCcIqJgCu-TE8fbOfJ"   # yolo_office folder
+VGGT_GDRIVE_ID  = "12AVRrnZ86Yn6v6GhL5jbbJkV_RuKXO-9"    # vggt_omega zip (~4.3 GB)
+YOLO_GDRIVE_ID  = "1K2kK6ZiL93V06uZOH4D5oE-TzQAdLDHM"   # yolo_office zip (~6 MB)
 
 REPO_ROOT = Path(__file__).parent.parent
 CKPT_ROOT = REPO_ROOT / "checkpoints"
@@ -77,16 +77,21 @@ def download_yolo() -> None:
     print("  Downloading YOLO office weights from Google Drive...")
     dest = CKPT_ROOT / "yolo_office"
     dest.mkdir(parents=True, exist_ok=True)
+    zip_path = CKPT_ROOT / "yolo_office.zip"
 
-    # Drive link is a folder — download all contents into dest
-    gdown.download_folder(id=YOLO_GDRIVE_ID, output=str(dest), quiet=False)
+    gdown.download(id=YOLO_GDRIVE_ID, output=str(zip_path), fuzzy=True, quiet=False)
 
-    # Unzip if a zip landed in dest
-    for z in dest.glob("*.zip"):
-        _unzip(z, dest)
+    if not zip_path.exists():
+        print("ERROR: Download failed — file not found after gdown.")
+        sys.exit(1)
+
+    if zipfile.is_zipfile(zip_path):
+        _unzip(zip_path, dest)
+    else:
+        zip_path.rename(dest / "best.pt")
 
     if not YOLO_PT.exists():
-        print(f"ERROR: Expected {YOLO_PT} after download — check the folder on Google Drive.")
+        print(f"ERROR: Expected {YOLO_PT} after download — check the file on Google Drive.")
         sys.exit(1)
 
     print(f"  YOLO weights ready: {YOLO_PT}")
