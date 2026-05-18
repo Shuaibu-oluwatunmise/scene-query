@@ -164,16 +164,15 @@ def query_object(scene: dict, label: str) -> dict:
     idxs = np.array(label_index[matched], dtype=np.int64)
     pts  = scene["xyz"][idxs]
 
-    pts_clean = _clean_and_fit_obb(pts, scene["poses"])
-
-    center = pts_clean.mean(axis=0).astype(np.float32)
-    obb    = _gravity_aligned_obb(pts_clean, scene["poses"])
+    # Scene was already globally cleaned at reconstruction time; skip per-label SOR.
+    center = pts.mean(axis=0).astype(np.float32)
+    obb    = _gravity_aligned_obb(pts, scene["poses"])
 
     return {
         "label":        matched,
         "centroid":     center,
-        "bbox_min":     pts_clean.min(axis=0).astype(np.float32),
-        "bbox_max":     pts_clean.max(axis=0).astype(np.float32),
+        "bbox_min":     pts.min(axis=0).astype(np.float32),
+        "bbox_max":     pts.max(axis=0).astype(np.float32),
         "obb_center":   obb["center"],
         "obb_half":     obb["half"],
         "obb_quat":     obb["quat"],

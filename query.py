@@ -346,7 +346,7 @@ def _visualise_multi(
             rrb.Horizontal(
                 rrb.Spatial3DView(
                     name=f"Objects — {name}",
-                    contents=["world/scene_bg", "world/query_pts/**"],
+                    contents=["world/scene_bg", "world/query_pts"],
                     eye_controls=first_cam_eye,
                     background=bg,
                 ),
@@ -381,18 +381,30 @@ def _visualise_multi(
         bg_xyz, colors=grey, radii=rr.Radius.ui_points(1.0),
     ), static=True)
 
+    # Assign intersecting points to the label with the smallest bbox (most specific).
+    # Process largest bbox first so smallest overwrites.
+    volumes = [float(np.prod(r["bbox_max"] - r["bbox_min"])) for r in results]
+    order   = np.argsort(volumes)[::-1]   # largest → smallest
+
+    colour_map = np.zeros((len(bg_xyz), 3), dtype=np.uint8)
+    assigned   = np.zeros(len(bg_xyz), dtype=bool)
+
+    for i in order:
+        result  = results[i]
+        colour  = colours[i]
+        in_bbox = np.all((bg_xyz >= result["bbox_min"]) & (bg_xyz <= result["bbox_max"]), axis=1)
+        colour_map[in_bbox] = colour
+        assigned |= in_bbox
+
+    if assigned.any():
+        rr.log("world/query_pts", rr.Points3D(
+            bg_xyz[assigned],
+            colors=colour_map[assigned],
+            radii=rr.Radius.ui_points(2.5),
+        ), static=True)
+
     for result, colour in zip(results, colours):
         label    = result["label"]
-        bbox_min = result["bbox_min"]
-        bbox_max = result["bbox_max"]
-        in_bbox  = np.all((bg_xyz >= bbox_min) & (bg_xyz <= bbox_max), axis=1)
-        if in_bbox.any():
-            rr.log(f"world/query_pts/{label}", rr.Points3D(
-                bg_xyz[in_bbox],
-                colors=np.tile(colour, (in_bbox.sum(), 1)).astype(np.uint8),
-                radii=rr.Radius.ui_points(2.5),
-            ), static=True)
-
         rr.log(f"world/query_bbox/{label}", rr.Boxes3D(
             centers=[result["obb_center"].tolist()],
             half_sizes=[result["obb_half"].tolist()],
