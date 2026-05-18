@@ -208,6 +208,10 @@ def _save_rrd(
                 background=bg,
             ),
         ),
+        rrb.TimePanel(
+            playback_speed=0.1,
+            loop_mode=rrb.components.LoopMode.All,
+        ),
         collapse_panels=True,
         auto_views=False,
     )

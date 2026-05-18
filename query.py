@@ -211,6 +211,7 @@ def _visualise_focused(
             ),
             row_shares=[3, 2],
         ),
+        rrb.TimePanel(playback_speed=0.1, loop_mode=rrb.components.LoopMode.All),
         collapse_panels=True,
         auto_views=False,
     )
@@ -359,6 +360,7 @@ def _visualise_multi(
             ),
             row_shares=[3, 2],
         ),
+        rrb.TimePanel(playback_speed=0.1, loop_mode=rrb.components.LoopMode.All),
         collapse_panels=True,
         auto_views=False,
     )
