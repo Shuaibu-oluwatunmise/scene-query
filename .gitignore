@@ -17,12 +17,10 @@ env/
 .DS_Store
 Thumbs.db
 
-# Model checkpoints — weights gitignored (too large), training artifacts kept
+# Model checkpoints — large weights gitignored, small YOLO model committed (6MB)
 checkpoints/*
 !checkpoints/README.md
 !checkpoints/yolo_office/
-checkpoints/yolo_office/*.pt
-checkpoints/yolo_office/*.pth
 weights/
 *.ckpt
 *.safetensors
