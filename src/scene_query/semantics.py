@@ -14,9 +14,14 @@ _YOLO_WEIGHTS = _REPO_ROOT / "checkpoints" / "yolo_office" / "best.pt"
 
 
 def load_yolo_model(weights_path: Path | None = None, device: str = "cuda"):
-    """Load YOLOv8 detection model from local weights."""
+    """Load YOLOv8 detection model from local weights or an ultralytics model name."""
     from ultralytics import YOLO
     path = Path(weights_path) if weights_path else _YOLO_WEIGHTS
+    # If it's a plain filename with no directory (e.g. "yolov8s.pt"), let
+    # ultralytics resolve and auto-download it rather than treating it as a
+    # missing local file.
+    if not path.exists() and path.parent == Path("."):
+        return YOLO(str(path)).to(device)
     if not path.exists():
         raise FileNotFoundError(
             f"YOLO weights not found: {path}\n"

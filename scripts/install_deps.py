@@ -36,7 +36,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "vggt-omega"
         run(["git", "clone", "--depth=1", OMEGA_GH, str(src)], "git clone vggt-omega")
-        run(pip + ["-e", str(src), "--no-deps"], "pip install vggt-omega")
+        run(pip + [str(src), "--no-deps"], "pip install vggt-omega")
 
     print("\n=== All dependencies installed. ===")
 
