@@ -1,73 +1,65 @@
 # scene-query
 
-**Video or images in. Queryable 3D scene out.**
+Point a camera at a scene. Ask it where things are.
 
-Most reconstruction pipelines produce a point cloud or a Gaussian splat — a rendering artefact. This produces something a humanoid robot can actually use: a *scene memory* where objects have labels, space has structure, and you can ask questions in natural language.
+**scene-query** takes a video or a folder of images, builds a dense 3D reconstruction, and lets you query it in plain English — *"find the bulldozer"*, *"find the chair"*, *"find the monitor"* — returning a tight 3D bounding box around the object, visualised with a full camera timeline.
 
-Built for Humanoid's Perception & Spatial AI internship challenge.
-
----
-
-## Pipeline
-
-```
-Video / images
-      │
-      ▼
-  VGGT-Omega (Meta, CVPR 2026)     ← feed-forward, no per-scene optimisation
-  camera poses + dense depth map
-      │
-      ├─────────────────────────────────┐
-      ▼                                 ▼
-  YOLOv8 office detector           depth → point cloud
-  per-frame bounding boxes         (photo-coloured, full scene)
-  (10 classes: bottle, chair,
-   keyboard, monitor, mouse,
-   mug, notebook, pen,
-   printer, stapler)
-      │
-      ▼
-  Mask lifting
-  unproject masked depth → world-space labelled points
-      │
-      ▼
-  Labelled point cloud  [outputs/scene/pointcloud.npz]
-  XYZ + RGB + label + confidence, per point
-      │
-      ▼
-  Query engine  (CPU, no models)
-  "find the chair" → 3D centroid + bounding region + Rerun visualisation
-```
-
-The YOLO model is trained on 10 office classes with mAP@0.5 = 98.3%. Weights ship in the repo (`checkpoints/yolo_office/`).
+No fixed vocabulary. No retraining. Any object you can name, it can find.
 
 ---
 
-## Quick start
+## How it works
+
+**Reconstruct** — feed in your images or video. [VGGT-Omega](https://github.com/facebookresearch/vggt-omega) runs a single feed-forward pass and produces camera poses, per-frame depth maps, and a photo-coloured 3D point cloud. No optimisation loop, no SfM pipeline — just one forward pass.
+
+**Query** — ask for any object by name. [Grounding DINO](https://github.com/IDEA-Research/GroundingDINO) detects it across every frame open-vocabulary, [SAM 2](https://github.com/facebookresearch/sam2) segments it precisely, and the masks are back-projected using VGGT depth to lift the object into 3D. The result is a tight oriented bounding box ready for robot manipulation, navigation, or scene understanding.
+
+---
+
+## Scenario 1 — just explore our outputs (no GPU needed)
+
+All you need is [Rerun](https://rerun.io) and Git LFS to pull the output files.
+
+```bash
+git lfs install
+git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
+cd scene-query
+
+pip install rerun-sdk
+```
+
+**Open the 3D reconstruction:**
+```bash
+rerun outputs/tabletop/tabletop.rrd
+```
+
+**Open the bulldozer query result:**
+```bash
+rerun outputs/tabletop/query_bulldozer.rrd
+```
+
+### What you will see
+
+**Reconstruction** — raw camera feed alongside the live 3D point cloud. Camera frustums move through the scene as you scrub the timeline:
+
+![Tabletop reconstruction](outputs/tabletop/tabletop.png)
+
+**Query: `bulldozer`** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene:
+
+![Bulldozer query](outputs/tabletop/query.png)
+
+The object here is a LEGO Technic bulldozer — chosen deliberately to show that queries can be specific and unconventional. There was no bulldozer class trained anywhere. Grounding DINO found it from the text prompt alone.
+
+---
+
+## Scenario 2 — run it yourself (CUDA GPU required)
 
 ### Prerequisites
 
-**For `reconstruct.py` (scene building — GPU machine required):**
+- NVIDIA GPU (RTX 3080 or better recommended, ≥ 16 GB VRAM)
+- CUDA 12.x
 - Python 3.10+
-- CUDA GPU with ≥ 16 GB VRAM (tested: A100 80 GB, RTX 6000 Ada 48 GB)
-- CUDA driver 11.8+ (check yours: `nvidia-smi`, version shown top-right)
-- PyTorch installed with matching CUDA version (see step 1)
-
-**For `query.py` (querying pre-built scenes — runs on any machine):**
-- Python 3.10+, no GPU needed
-
----
-
-### 1. Clone
-
-```bash
-git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
-cd scene-query
-```
-
-### 2. Install PyTorch (GPU machine only)
-
-Find your CUDA version with `nvidia-smi` (top-right corner), then install the matching build:
+- PyTorch with CUDA — install this first:
 
 ```bash
 # CUDA 12.4
@@ -75,135 +67,133 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
 # CUDA 12.1
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# CUDA 11.8
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 ```
 
 Full list: https://pytorch.org/get-started/locally/
 
-### 3. Run setup
+### 1. Clone and install
+
+```bash
+git lfs install
+git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
+cd scene-query
+
+pip install -r requirements.txt
+```
+
+### 2. Download model weights
 
 ```bash
 python setup.py
 ```
 
-This checks your PyTorch/CUDA install, downloads VGGT-Omega weights (~4.3 GB) from Google Drive, and installs all Python dependencies. YOLO weights ship in the repo — no separate download needed.
+Downloads VGGT-Omega (~4.3 GB), Grounding DINO, and SAM 2.1 weights into `checkpoints/`.
 
-### 4. Reconstruct
+### 3. Reconstruct
 
+**From a folder of images:**
 ```bash
 python reconstruct.py \
-    --video examples/test_scenery1.mp4 \
-    --out outputs/scene1 \
-    --save-rrd outputs/scene1.rrd
+    --images examples/tabletop \
+    --out outputs/tabletop \
+    --save-rrd outputs/tabletop/tabletop.rrd
 ```
 
-This extracts frames, runs VGGT-Omega for geometry, detects objects with YOLO, lifts detections into 3D, and saves everything to `outputs/scene1/`. The `--save-rrd` flag also writes a Rerun recording with 3 panels (raw camera | detections overlay | 3D scene).
-
-### 5. Query
-
+**From a video:**
 ```bash
-python query.py outputs/scene1 "find the chair" --save-rrd outputs/query.rrd
-python -m rerun outputs/query.rrd
+python reconstruct.py \
+    --video examples/my_scene.mp4 \
+    --out outputs/my_scene \
+    --save-rrd outputs/my_scene/scene.rrd
 ```
 
-Query runs entirely on CPU — no models loaded. Download `outputs/scene1/` and `outputs/query.rrd` to your laptop to view.
+Open the result:
+```bash
+rerun outputs/tabletop/tabletop.rrd
+```
+
+Outputs saved to the `--out` directory:
+
+| File | Description |
+|---|---|
+| `scene_cloud.npz` | Photo-coloured 3D point cloud |
+| `depth.npz` | Per-frame depth maps |
+| `poses.npz` | Camera-to-world poses |
+| `intrinsics.npz` | Camera intrinsics |
+| `tabletop.rrd` | Rerun recording |
+
+### 4. Query
+
+**Specific object:**
+```bash
+python query.py outputs/tabletop bulldozer \
+    --images examples/tabletop \
+    --save-rrd outputs/tabletop/query_bulldozer.rrd
+```
+
+**Multiple objects at once:**
+```bash
+python query.py outputs/tabletop bulldozer cup bottle \
+    --images examples/tabletop \
+    --save-rrd outputs/tabletop/query_multi.rrd
+```
+
+**Full environment scan using a preset:**
+```bash
+python query.py outputs/my_scene \
+    --preset office \
+    --images examples/my_scene \
+    --save-rrd outputs/my_scene/query_office.rrd
+```
+
+Open the result:
+```bash
+rerun outputs/tabletop/query_bulldozer.rrd
+```
+
+Available presets: `office`, `home`, `classroom`, `kitchen`, `warehouse`.
 
 ---
 
-## What you see in Rerun
+## Examples
 
-**Reconstruction** (`--save-rrd` on reconstruct.py) — 3-panel layout, timeline at 0.1× speed:
+### Tabletop — image input, specific object query *(included)*
 
-```
-┌──────────────────┬──────────────────┬──────────────────────────┐
-│  Camera feed     │  Camera feed +   │  3D scene                │
-│  (raw)           │  YOLO detections │  photo-coloured cloud +  │
-│                  │  overlaid        │  moving camera           │
-└──────────────────┴──────────────────┴──────────────────────────┘
-```
+| Input | 25 images of a tabletop scene |
+|---|---|
+| Query | `bulldozer` |
+| Result | Detected in all 25 frames at 0.89 confidence, 522K points lifted to 3D |
 
-**Query** (`query.py`) — 5-panel layout:
+| Reconstruction | Query |
+|---|---|
+| ![Reconstruction](outputs/tabletop/tabletop.png) | ![Query](outputs/tabletop/query.png) |
 
-```
-┌──────────────────┬──────────────────┬──────────────────┐
-│  Camera feed     │  3D view through │  Segmentation    │
-│  (timeline)      │  moving camera   │  overlay         │
-│                  │  (timeline)      │  (timeline)      │
-├────────────────────────┬────────────────────────────────┤
-│  Grey scene +          │  Photo-coloured scene +        │
-│  queried label         │  tight bounding box            │
-│  highlighted (static)  │  (static)                      │
-└────────────────────────┴────────────────────────────────┘
-```
+### Office / home walkthrough — video input, preset query *(coming soon)*
+
+| Input | Video walkthrough of an office space |
+|---|---|
+| Query | `--preset office` |
+| Result | Every common object in the scene found and localised in one pass |
 
 ---
 
-## All flags
-
-### reconstruct.py
-
-```
---video FILE          Input video (auto-saves frames)
---images DIR          Input image directory
---out DIR             Output scene directory (required)
---fps FLOAT           Frame sample rate (default: 2.0, video only)
---max-frames INT      Cap frames fed to VGGT (default: 50)
---backend yolo|gsam2  Semantics backend (default: yolo)
---save-rrd FILE       Also save a Rerun .rrd recording
---device cuda|cpu     (default: cuda)
---geometry-only       Skip semantics — VGGT geometry output only
-```
-
-### query.py
-
-```
-SCENE_DIR             Path to reconstructed scene directory
-QUERY                 Natural-language object query, e.g. "find the chair"
---save-rrd FILE       Save Rerun .rrd (default: <scene_dir>/query.rrd)
---free-space          Query navigable floor space instead of an object
---reachable-from X Y Z --reach FLOAT
-                      Objects within arm reach of a robot base position
-```
-
----
-
-## Output format
-
-```
-outputs/scene/
-├── pointcloud.npz      # XYZ, RGB, label, confidence — one row per labelled point
-├── scene_cloud.npz     # full VGGT cloud for background visualisation
-├── poses.npz           # camera-to-world 4×4 matrices, one per frame
-├── intrinsics.npz      # per-frame camera intrinsics + VGGT image_size
-├── labels.json         # label → point-index list for fast lookup
-└── frames/             # extracted frames (only when input was --video)
-```
-
----
-
-## Repository layout
+## Project structure
 
 ```
 scene-query/
-├── reconstruct.py           # video/images → labelled scene directory
-├── query.py                 # scene directory → answer + Rerun visualisation
-├── setup.py                 # one-shot setup: downloads weights + installs deps
+├── reconstruct.py          # Images / video → 3D geometry
+├── query.py                # Text query → 3D bounding box
+├── setup.py                # One-shot setup: weights + deps
 ├── src/scene_query/
-│   ├── geometry.py          # VGGT-Omega wrapper (poses + depth + point cloud)
-│   ├── semantics.py         # YOLO detection backend (+ GSAM2 fallback)
-│   ├── lift.py              # unproject masked depth into world-space labels
-│   └── query_engine.py      # text + spatial query logic
+│   ├── geometry.py         # VGGT-Omega wrapper
+│   ├── lift.py             # Mask back-projection (2D + depth → 3D)
+│   ├── semantics.py        # Grounding DINO + SAM 2
+│   └── query_engine.py     # Scene loading, OBB fitting
 ├── scripts/
-│   ├── download_models.py   # download VGGT-Omega + YOLO weights from Google Drive
-│   └── install_deps.py      # install requirements.txt + vggt-omega package
-├── checkpoints/
-│   ├── yolo_office/         # YOLOv8 weights + training artefacts (in git)
-│   └── vggt_omega/          # VGGT-Omega weights (downloaded by setup.py)
+│   ├── install_deps.py     # Dependency installer
+│   └── download_models.py  # Weight downloader
 ├── examples/
-│   ├── tabletop/            # 25 still images of a tabletop scene
-│   └── test_scenery*.mp4    # office scene videos
-└── docs/
-    └── design_note.md       # rationale: choices, tradeoffs, robot relevance
+│   └── tabletop/           # 25 input images
+└── outputs/
+    └── tabletop/           # Reconstruction + query outputs (Git LFS)
 ```
