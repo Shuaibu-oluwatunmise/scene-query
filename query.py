@@ -6,6 +6,14 @@ from pathlib import Path
 
 import numpy as np
 
+_DEVICE = "cuda"
+try:
+    import torch
+    if not torch.cuda.is_available():
+        _DEVICE = "cpu"
+except ImportError:
+    _DEVICE = "cpu"
+
 from src.scene_query.query_engine import (
     load_scene,
     query_free_space,
@@ -419,6 +427,103 @@ def _visualise_multi(
 
 
 # ---------------------------------------------------------------------------
+# GSAM2 open-vocabulary fallback
+# ---------------------------------------------------------------------------
+
+def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) -> dict:
+    """Query an arbitrary label via Grounding DINO + SAM2 + point-cloud projection.
+
+    Projects the saved VGGT background cloud into each frame, selects points
+    that fall inside the GSAM2 mask, then fits an OBB — no VGGT re-run needed.
+    """
+    from src.scene_query.semantics import load_gsam2_models, segment_frames_gsam2
+    from src.scene_query.geometry import load_frames_from_dir
+    from src.scene_query.query_engine import _clean_and_fit_obb, _gravity_aligned_obb
+
+    print(f"  '{label}' not in scene — running Grounding DINO + SAM2 fallback...")
+
+    frames = load_frames_from_dir(images_dir)
+
+    print("  Loading GSAM2 models...")
+    gdino, sam = load_gsam2_models(device=_DEVICE)
+
+    print(f"  Running GSAM2 on {len(frames)} frames...")
+    masks_per_frame = segment_frames_gsam2(frames, [label], gdino, sam, device=_DEVICE)
+
+    # Load background point cloud and camera data
+    sc         = np.load(scene_dir / "scene_cloud.npz")
+    xyz_bg     = sc["xyz"]
+    intr       = np.load(scene_dir / "intrinsics.npz")
+    intrinsics = intr["intrinsics"]
+    image_size = intr["image_size"]
+    poses      = scene["poses"]
+    H_d, W_d   = int(image_size[0]), int(image_size[1])
+
+    # Subsample to keep projection fast
+    MAX_PTS = 300_000
+    if len(xyz_bg) > MAX_PTS:
+        sub    = np.random.choice(len(xyz_bg), MAX_PTS, replace=False)
+        xyz_bg = xyz_bg[sub]
+
+    collected = np.zeros(len(xyz_bg), dtype=bool)
+
+    for i, (frame, frame_dets) in enumerate(zip(frames, masks_per_frame)):
+        if not frame_dets:
+            continue
+        H_orig, W_orig = frame.shape[:2]
+        combined_mask  = np.zeros((H_orig, W_orig), dtype=bool)
+        for det in frame_dets:
+            combined_mask |= det["mask"]
+        if not combined_mask.any():
+            continue
+
+        pose = poses[i]
+        K    = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
+        sx, sy = W_orig / W_d, H_orig / H_d
+        fx = K[0, 0] * sx;  fy = K[1, 1] * sy
+        cx_k = K[0, 2] * sx; cy_k = K[1, 2] * sy
+
+        R, t  = pose[:3, :3], pose[:3, 3]
+        p_cam = (xyz_bg - t) @ R           # (N, 3) world → camera
+
+        valid = p_cam[:, 2] > 0.01
+        z     = np.where(valid, p_cam[:, 2], 1.0)
+        xi    = (fx * p_cam[:, 0] / z + cx_k).astype(np.int32)
+        yi    = (fy * p_cam[:, 1] / z + cy_k).astype(np.int32)
+        valid &= (xi >= 0) & (xi < W_orig) & (yi >= 0) & (yi < H_orig)
+
+        xc = np.clip(xi, 0, W_orig - 1)
+        yc = np.clip(yi, 0, H_orig - 1)
+        collected |= valid & combined_mask[yc, xc]
+
+    pts = xyz_bg[collected]
+    if len(pts) < 10:
+        raise KeyError(f"GSAM2 found no 3D points for '{label}' in the scene.")
+
+    print(f"  Collected {len(pts):,} points via GSAM2 projection")
+
+    pts_clean = _clean_and_fit_obb(pts, poses)
+    if len(pts_clean) < 3:
+        pts_clean = pts
+
+    center = pts_clean.mean(axis=0).astype(np.float32)
+    obb    = _gravity_aligned_obb(pts_clean, poses)
+
+    return {
+        "label":      label,
+        "centroid":   center,
+        "bbox_min":   pts_clean.min(axis=0).astype(np.float32),
+        "bbox_max":   pts_clean.max(axis=0).astype(np.float32),
+        "obb_center": obb["center"],
+        "obb_half":   obb["half"],
+        "obb_quat":   obb["quat"],
+        "n_points":   len(pts),
+        "confidence": 0.5,
+        "indices":    np.where(collected)[0],
+    }
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -443,9 +548,17 @@ def main() -> None:
 
     elif args.query:
         query_type = "object"
+        images_dir_for_fallback = args.images or (args.scene_dir / "frames")
+
+        def _query_with_fallback(label: str) -> dict:
+            try:
+                return query_object(scene, label)
+            except KeyError:
+                return _gsam2_fallback(scene, args.scene_dir, label, images_dir_for_fallback)
+
         if len(args.query) == 1:
             label  = args.query[0].lower().removeprefix("find the ").removeprefix("find ").strip()
-            result = query_object(scene, label)
+            result = _query_with_fallback(label)
             print(f"Label      : {result['label']}")
             print(f"Centroid   : {result['centroid']}")
             print(f"Bbox       : {result['bbox_min']} -> {result['bbox_max']}")
@@ -456,7 +569,7 @@ def main() -> None:
             for q in args.query:
                 label = q.lower().removeprefix("find the ").removeprefix("find ").strip()
                 try:
-                    r = query_object(scene, label)
+                    r = _query_with_fallback(label)
                     results.append(r)
                     print(f"Label      : {r['label']}")
                     print(f"Centroid   : {r['centroid']}")

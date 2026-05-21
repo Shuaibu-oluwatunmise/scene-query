@@ -67,21 +67,27 @@ def main() -> None:
     print("\n[0/3] Checking PyTorch + CUDA...")
     check_torch()
 
-    print("\n[1/3] Downloading model weights...")
+    print("\n[1/2] Downloading model weights...")
     run(SCRIPTS / "download_models.py")
 
-    print("\n[2/3] Installing Python dependencies...")
+    print("\n[2/2] Installing Python dependencies...")
     run(SCRIPTS / "install_deps.py")
 
     print("\n" + "=" * 60)
     print("Setup complete!")
     print()
     print("  Reconstruct a scene (GPU required):")
-    print("    python reconstruct.py --video examples/test_scenery1.mp4 \\")
-    print("        --out outputs/scene1 --save-rrd outputs/scene1.rrd")
+    print("    python reconstruct.py --video examples/myscene.mp4 \\")
+    print("        --out outputs/scene --save-rrd outputs/scene.rrd")
     print()
-    print("  Query a scene (CPU / laptop — no GPU needed):")
-    print('    python query.py outputs/scene1 "find the chair"')
+    print("  Query a known object (uses lifted point cloud — fast):")
+    print('    python query.py outputs/scene chair --save-rrd outputs/query.rrd')
+    print()
+    print("  Query any object (Grounding DINO + SAM2 fallback — slower):")
+    print('    python query.py outputs/scene bulldozer --save-rrd outputs/query.rrd')
+    print()
+    print("  Show all detected objects:")
+    print('    python query.py outputs/scene --save-rrd outputs/query.rrd')
     print("=" * 60)
 
 

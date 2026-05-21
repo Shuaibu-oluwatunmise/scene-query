@@ -1,24 +1,51 @@
-"""Download model weights from Google Drive into checkpoints/.
+"""Download model weights into checkpoints/.
 
-VGGT-Omega weights are always downloaded (~4.3 GB).
-YOLO weights are skipped if checkpoints/yolo_office/best.pt already exists
-(it ships with the repo, so this only runs when git clone is not used).
+Downloads:
+  - VGGT-Omega weights (~4.3 GB) from Google Drive
+  - YOLO office detector weights (~6 MB) from Google Drive
+  - Grounding DINO weights + config (~700 MB) from GitHub
+  - SAM 2.1 large weights (~900 MB) from Meta CDN
 
 Usage:
     python scripts/download_models.py
 """
 import sys
+import urllib.request
 import zipfile
 from pathlib import Path
 
 # Google Drive file/folder IDs
-VGGT_GDRIVE_ID  = "12AVRrnZ86Yn6v6GhL5jbbJkV_RuKXO-9"    # vggt_omega zip (~4.3 GB)
-YOLO_GDRIVE_ID  = "1K2kK6ZiL93V06uZOH4D5oE-TzQAdLDHM"   # yolo_office zip (~6 MB)
+VGGT_GDRIVE_ID  = "12AVRrnZ86Yn6v6GhL5jbbJkV_RuKXO-9"
+YOLO_GDRIVE_ID  = "1K2kK6ZiL93V06uZOH4D5oE-TzQAdLDHM"
 
-REPO_ROOT = Path(__file__).parent.parent
-CKPT_ROOT = REPO_ROOT / "checkpoints"
-YOLO_PT   = CKPT_ROOT / "yolo_office" / "best.pt"
-VGGT_PT   = CKPT_ROOT / "vggt_omega" / "vggt_omega_1b_512.pt"
+# Grounding DINO + SAM 2.1
+GDINO_WEIGHTS_URL = "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth"
+GDINO_CONFIG_URL  = "https://raw.githubusercontent.com/IDEA-Research/GroundingDINO/main/groundingdino/config/GroundingDINO_SwinT_OGC.py"
+SAM21_WEIGHTS_URL = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt"
+
+REPO_ROOT     = Path(__file__).parent.parent
+CKPT_ROOT     = REPO_ROOT / "checkpoints"
+YOLO_PT       = CKPT_ROOT / "yolo_office" / "best.pt"
+VGGT_PT       = CKPT_ROOT / "vggt_omega" / "vggt_omega_1b_512.pt"
+GDINO_DIR     = CKPT_ROOT / "grounding_dino"
+GDINO_WEIGHTS = GDINO_DIR / "groundingdino_swint_ogc.pth"
+GDINO_CONFIG  = GDINO_DIR / "GroundingDINO_SwinT_OGC.py"
+SAM2_DIR      = CKPT_ROOT / "sam2"
+SAM2_WEIGHTS  = SAM2_DIR  / "sam2.1_hiera_large.pt"
+
+
+def _download_file(url: str, dest: Path, label: str) -> None:
+    """Download a URL to dest with a simple progress hook."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    print(f"  Downloading {label}...")
+
+    def _hook(count, block_size, total):
+        if total > 0:
+            pct = min(100, count * block_size * 100 // total)
+            print(f"\r  {pct:3d}%", end="", flush=True)
+
+    urllib.request.urlretrieve(url, str(dest), reporthook=_hook)
+    print(f"\r  Done -> {dest}  ({dest.stat().st_size / 1e6:.0f} MB)")
 
 
 def _ensure_gdown() -> None:
@@ -104,15 +131,35 @@ def download_yolo() -> None:
     print(f"  YOLO weights ready: {YOLO_PT}")
 
 
+def download_gsam2() -> None:
+    if GDINO_WEIGHTS.exists():
+        print(f"  Grounding DINO weights already present — skipping.")
+    else:
+        _download_file(GDINO_WEIGHTS_URL, GDINO_WEIGHTS, "Grounding DINO weights (~700 MB)")
+
+    if GDINO_CONFIG.exists():
+        print(f"  Grounding DINO config already present — skipping.")
+    else:
+        _download_file(GDINO_CONFIG_URL, GDINO_CONFIG, "Grounding DINO config")
+
+    if SAM2_WEIGHTS.exists():
+        print(f"  SAM 2.1 weights already present — skipping.")
+    else:
+        _download_file(SAM21_WEIGHTS_URL, SAM2_WEIGHTS, "SAM 2.1 large weights (~900 MB)")
+
+
 def main() -> None:
     print("=== Downloading model weights ===\n")
     _ensure_gdown()
 
-    print("[1/2] VGGT-Omega")
+    print("[1/3] VGGT-Omega")
     download_vggt_omega()
 
-    print("\n[2/2] YOLO office detector")
+    print("\n[2/3] YOLO office detector")
     download_yolo()
+
+    print("\n[3/3] Grounding DINO + SAM 2.1 (open-vocabulary fallback)")
+    download_gsam2()
 
     print("\nAll weights ready.")
 

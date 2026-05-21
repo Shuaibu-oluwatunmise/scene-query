@@ -14,6 +14,7 @@ rerun-sdk>=0.18
 
 # Semantics
 ultralytics
+pycocotools
 
 # Model downloads
 gdown
