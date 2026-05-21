@@ -146,7 +146,7 @@ def main() -> None:
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
-    keep     = conf_all > np.percentile(conf_all, 25)
+    keep     = conf_all > np.percentile(conf_all, 50)
     xyz_bg, rgb_bg = xyz_all[keep], rgb_all[keep]
     np.savez_compressed(args.out / "scene_cloud.npz", xyz=xyz_bg, rgb=rgb_bg)
     print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter)")
@@ -210,7 +210,7 @@ def _save_rrd(
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
-    keep     = conf_all > np.percentile(conf_all, 25)
+    keep     = conf_all > np.percentile(conf_all, 50)
     rgb_u8   = (np.clip(rgb_all[keep], 0, 1) * 255).astype(np.uint8)
     rr.log("world/photo", rr.Points3D(
         xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
