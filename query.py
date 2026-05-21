@@ -453,67 +453,31 @@ def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) 
     print(f"  Running GSAM2 on {len(frames)} frames...")
     masks_per_frame = segment_frames_gsam2(frames, [label], gdino, sam, device=_DEVICE)
 
-    # Load background point cloud and camera data
-    sc         = np.load(scene_dir / "scene_cloud.npz")
-    xyz_bg     = sc["xyz"]
+    # Back-project masks using saved VGGT depth maps — same approach as reconstruct.py
+    from src.scene_query.lift import lift_masks
+
+    depth_path = scene_dir / "depth.npz"
+    if not depth_path.exists():
+        raise FileNotFoundError(
+            f"depth.npz not found in {scene_dir} — re-run reconstruct.py to regenerate."
+        )
+    depth_maps = np.load(depth_path)["depth"].astype(np.float32)
     intr       = np.load(scene_dir / "intrinsics.npz")
     intrinsics = intr["intrinsics"]
-    image_size = intr["image_size"]
-    poses      = scene["poses"]
-    H_d, W_d   = int(image_size[0]), int(image_size[1])
 
-    # Subsample to keep projection fast
-    MAX_PTS = 300_000
-    if len(xyz_bg) > MAX_PTS:
-        sub    = np.random.choice(len(xyz_bg), MAX_PTS, replace=False)
-        xyz_bg = xyz_bg[sub]
+    lifted = lift_masks(
+        frames=frames,
+        depth_maps=depth_maps,
+        intrinsics=intrinsics,
+        poses=scene["poses"],
+        masks_per_frame=masks_per_frame,
+    )
+    pts = lifted["xyz"]
 
-    collected  = np.zeros(len(xyz_bg), dtype=bool)
-    DEPTH_TOL  = 0.08  # keep points within 8 cm of the nearest surface at each pixel
-
-    for i, (frame, frame_dets) in enumerate(zip(frames, masks_per_frame)):
-        if not frame_dets:
-            continue
-        H_orig, W_orig = frame.shape[:2]
-        combined_mask  = np.zeros((H_orig, W_orig), dtype=bool)
-        for det in frame_dets:
-            combined_mask |= det["mask"]
-        if not combined_mask.any():
-            continue
-
-        pose = poses[i]
-        K    = intrinsics[i] if i < len(intrinsics) else intrinsics[-1]
-        sx, sy = W_orig / W_d, H_orig / H_d
-        fx = K[0, 0] * sx;  fy = K[1, 1] * sy
-        cx_k = K[0, 2] * sx; cy_k = K[1, 2] * sy
-
-        R, t  = pose[:3, :3], pose[:3, 3]
-        p_cam = (xyz_bg - t) @ R           # (N, 3) world → camera
-
-        valid = p_cam[:, 2] > 0.01
-        z     = np.where(valid, p_cam[:, 2], 1.0)
-        xi    = (fx * p_cam[:, 0] / z + cx_k).astype(np.int32)
-        yi    = (fy * p_cam[:, 1] / z + cy_k).astype(np.int32)
-        valid &= (xi >= 0) & (xi < W_orig) & (yi >= 0) & (yi < H_orig)
-
-        xi_s = np.clip(xi, 0, W_orig - 1)
-        yi_s = np.clip(yi, 0, H_orig - 1)
-        flat = yi_s * W_orig + xi_s
-
-        in_mask = valid & combined_mask[yi_s, xi_s]
-
-        # Build per-pixel depth buffer — keep only the frontmost surface point
-        depth_buf = np.full(H_orig * W_orig, np.inf)
-        np.minimum.at(depth_buf, flat[in_mask], p_cam[in_mask, 2])
-
-        near_front = p_cam[:, 2] <= depth_buf[flat] + DEPTH_TOL
-        collected |= in_mask & near_front
-
-    pts = xyz_bg[collected]
     if len(pts) < 10:
         raise KeyError(f"GSAM2 found no 3D points for '{label}' in the scene.")
 
-    print(f"  Collected {len(pts):,} points via GSAM2 projection")
+    print(f"  Collected {len(pts):,} points via GSAM2 + depth back-projection")
 
     pts_clean = _clean_and_fit_obb(pts, poses)
     if len(pts_clean) < 3:

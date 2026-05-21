@@ -155,6 +155,10 @@ def main() -> None:
     np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],
                         image_size=np.array(geometry["image_size"]))
 
+    # Save depth maps so query.py GSAM2 fallback can do precise back-projection
+    np.savez_compressed(args.out / "depth.npz",
+                        depth=geometry["depth"].astype(np.float16))
+
     print(f"\nScene saved -> {args.out}")
     print("Query it with:")
     print(f'  python query.py {args.out} "find the chair"')
