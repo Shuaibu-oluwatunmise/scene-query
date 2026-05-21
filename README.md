@@ -56,6 +56,8 @@ The object here is a LEGO Technic bulldozer — chosen deliberately to show that
 
 ### Prerequisites
 
+> **OS note:** `reconstruct.py` and `query.py` require a **Linux environment** (or WSL2 on Windows) due to Grounding DINO's CUDA compilation step. Viewing outputs with Rerun works on Windows, macOS, and Linux.
+
 - NVIDIA GPU (RTX 3080 or better recommended, ≥ 16 GB VRAM)
 - CUDA 12.x
 - Python 3.10+
