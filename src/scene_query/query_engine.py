@@ -1,31 +1,23 @@
 """Text and spatial queries over a labelled point cloud scene."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import numpy as np
 
 
 def load_scene(scene_dir: str | Path) -> dict:
-    """Load pointcloud.npz + labels.json from a scene directory.
+    """Load geometry from a scene directory produced by reconstruct.py.
 
-    Returns a dict with keys: xyz, rgb, label, confidence, poses, label_index.
-    label_index maps each label string to its point indices for O(1) lookup.
+    Returns a dict with keys: poses, scene_xyz, scene_rgb.
     """
     scene_dir = Path(scene_dir)
-
-    pc = np.load(scene_dir / "pointcloud.npz", allow_pickle=True)
 
     poses = None
     poses_path = scene_dir / "poses.npz"
     if poses_path.exists():
         poses = np.load(poses_path)["poses"]
 
-    with open(scene_dir / "labels.json") as f:
-        label_index: dict[str, list[int]] = json.load(f)
-
-    # Full VGGT scene cloud for background visualisation (independent of labels)
     scene_xyz, scene_rgb = None, None
     scene_cloud_path = scene_dir / "scene_cloud.npz"
     if scene_cloud_path.exists():
@@ -33,14 +25,9 @@ def load_scene(scene_dir: str | Path) -> dict:
         scene_xyz, scene_rgb = sc["xyz"], sc["rgb"]
 
     return {
-        "xyz":         pc["xyz"],
-        "rgb":         pc["rgb"],
-        "label":       pc["label"],
-        "confidence":  pc["confidence"],
-        "poses":       poses,
-        "label_index": label_index,
-        "scene_xyz":   scene_xyz,
-        "scene_rgb":   scene_rgb,
+        "poses":     poses,
+        "scene_xyz": scene_xyz,
+        "scene_rgb": scene_rgb,
     }
 
 

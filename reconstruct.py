@@ -1,24 +1,12 @@
-"""Entry point: images or video -> labelled scene directory."""
+"""Entry point: images or video -> geometry scene directory."""
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
 from src.scene_query.geometry import extract_frames, load_frames_from_dir, load_model, run_vggt
-from src.scene_query.lift import lift_masks, save_scene
-from src.scene_query.semantics import load_yolo_model, segment_frames_yolo
 
 _REPO_ROOT = Path(__file__).parent
-
-def _label_colour(label: str) -> list[int]:
-    """Deterministic, visually distinct colour for any label string."""
-    import hashlib
-    h = int(hashlib.md5(label.encode()).hexdigest(), 16)
-    # Pick hue from hash, keep saturation and value high for visibility
-    import colorsys
-    hue = (h % 360) / 360.0
-    r, g, b = colorsys.hsv_to_rgb(hue, 0.75, 0.95)
-    return [int(r * 255), int(g * 255), int(b * 255)]
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,46 +19,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out", type=Path, required=True, help="Output scene directory")
     p.add_argument("--fps", type=float, default=2.0, help="Frame sample rate (video input only)")
     p.add_argument("--max-frames", type=int, default=50,
-                   help="Cap frames fed to VGGT (video input only) — quality degrades beyond ~50")
+                   help="Cap frames fed to VGGT — quality degrades beyond ~50")
     p.add_argument("--weights-vggt", type=Path,
                    default=_REPO_ROOT / "checkpoints" / "vggt_omega",
                    help="VGGT-Omega weights directory")
-    p.add_argument("--weights-yolo", type=Path, default=None,
-                   help="YOLOv8 weights .pt file (default: checkpoints/yolo_office/best.pt)")
     p.add_argument("--device", type=str, default="cuda")
-    p.add_argument("--geometry-only", action="store_true",
-                   help="Run VGGT only — skip semantics and lifting.")
     p.add_argument("--save-rrd", type=Path, default=None,
                    help="Also save a Rerun .rrd recording to this path")
     return p.parse_args()
-
-
-def _clean_scene(scene: dict, k: int = 16, std_ratio: float = 2.0) -> dict:
-    """Remove statistical outliers from the labelled point cloud."""
-    from scipy.spatial import cKDTree
-    import numpy as np
-    xyz = scene["xyz"]
-    if len(xyz) < k + 1:
-        return scene
-    tree = cKDTree(xyz)
-    dists, _ = tree.query(xyz, k=k + 1)
-    mean_dists = dists[:, 1:].mean(axis=1)
-    keep = mean_dists < (mean_dists.mean() + std_ratio * mean_dists.std())
-    print(f"  Outlier removal: {len(xyz):,} -> {keep.sum():,} points")
-    return {
-        "xyz":        xyz[keep],
-        "rgb":        scene["rgb"][keep],
-        "label":      scene["label"][keep],
-        "confidence": scene["confidence"][keep],
-        "poses":      scene.get("poses"),
-    }
-
-
-def _voxel_downsample(xyz: "np.ndarray", rgb: "np.ndarray", voxel_size: float = 0.005):
-    import numpy as np
-    coords = np.floor(xyz / voxel_size).astype(np.int32)
-    _, unique_idx = np.unique(coords, axis=0, return_index=True)
-    return xyz[unique_idx], rgb[unique_idx]
 
 
 def _save_frames(frames: list, frames_dir: Path) -> None:
@@ -81,9 +37,9 @@ def _save_frames(frames: list, frames_dir: Path) -> None:
     print(f"  Frames saved -> {frames_dir}/")
 
 
-
 def main() -> None:
     args = parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)
 
     # --- Load frames ---
     if args.images:
@@ -102,47 +58,12 @@ def main() -> None:
     print(f"  Poses: {geometry['poses'].shape}  Depth: {geometry['depth'].shape}")
     print(f"  Points: {len(geometry['xyz']):,}")
 
-    if args.geometry_only:
-        _save_geometry(geometry, args.out)
-        return
-
-    # --- Semantics ---
-    print(f"\nRunning YOLO semantics...")
-    yolo_model = load_yolo_model(args.weights_yolo, args.device)
-    print(f"  Classes: {list(yolo_model.names.values())}")
-    masks_per_frame = segment_frames_yolo(frames, yolo_model, args.device)
-
-    # --- Lift to 3D ---
-    print("\nLifting masks to 3D...")
-    scene = lift_masks(
-        frames=frames,
-        depth_maps=geometry["depth"],
-        intrinsics=geometry["intrinsics"],
-        poses=geometry["poses"],
-        masks_per_frame=masks_per_frame,
-    )
-    scene["poses"] = geometry["poses"]
-
-    # Remove outlier points from labelled cloud
-    scene = _clean_scene(scene)
-
-    save_scene(scene, args.out)
-
-    # Save per-frame bbox detections so query.py can overlay them
-    import json
-    dets_out = []
-    for frame_dets in masks_per_frame:
-        dets_out.append([
-            {"label": d["label"], "bbox": d["bbox"], "confidence": d["confidence"]}
-            for d in frame_dets if "bbox" in d
-        ])
-    with open(args.out / "detections.json", "w") as f:
-        json.dump(dets_out, f)
-
     import numpy as np
 
-    # Save full VGGT cloud for background visualisation in query.py.
-    # Keep top 50% by confidence.
+    # Camera poses
+    np.savez_compressed(args.out / "poses.npz", poses=geometry["poses"])
+
+    # Full VGGT cloud — keep top 50% by confidence
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
@@ -151,32 +72,26 @@ def main() -> None:
     np.savez_compressed(args.out / "scene_cloud.npz", xyz=xyz_bg, rgb=rgb_bg)
     print(f"  Scene cloud: {len(xyz_bg):,} points (after conf filter)")
 
-    # Save intrinsics alongside the scene so query.py can draw camera frustums
+    # Intrinsics for camera frustum drawing and back-projection
     np.savez_compressed(args.out / "intrinsics.npz", intrinsics=geometry["intrinsics"],
                         image_size=np.array(geometry["image_size"]))
 
-    # Save depth maps so query.py GSAM2 fallback can do precise back-projection
+    # Depth maps for GSAM2 mask back-projection at query time
     np.savez_compressed(args.out / "depth.npz",
                         depth=geometry["depth"].astype(np.float16))
 
     print(f"\nScene saved -> {args.out}")
     print("Query it with:")
-    print(f'  python query.py {args.out} "find the chair"')
+    print(f'  python query.py {args.out} bulldozer')
+    print(f'  python query.py {args.out} --preset office')
 
-    # --- Rerun recording ---
     if args.save_rrd:
         print(f"\nSaving Rerun recording -> {args.save_rrd}")
-        _save_rrd(frames, geometry, masks_per_frame, scene, args.save_rrd)
+        _save_rrd(frames, geometry, args.save_rrd)
 
 
-def _save_rrd(
-    frames: list,
-    geometry: dict,
-    masks_per_frame: list,
-    scene: dict,
-    rrd_path: Path,
-) -> None:
-    """Write a Rerun .rrd with 2 panels: raw camera feed | 3D reconstruction."""
+def _save_rrd(frames: list, geometry: dict, rrd_path: Path) -> None:
+    """Write a Rerun .rrd: raw camera feed | 3D reconstruction."""
     import numpy as np
     import rerun as rr
     import rerun.blueprint as rrb
@@ -206,7 +121,6 @@ def _save_rrd(
 
     H_d, W_d = geometry["image_size"]
 
-    # Static: full photo-coloured point cloud
     xyz_all  = geometry["xyz"]
     rgb_all  = geometry["rgb"]
     conf_all = geometry["xyz_conf"]
@@ -216,7 +130,6 @@ def _save_rrd(
         xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
-    # Per-frame timeline: camera feed + moving camera frustum
     for i, frame in enumerate(frames):
         rr.set_time("frame", sequence=i)
 
@@ -239,50 +152,6 @@ def _save_rrd(
         rr.log("world/camera/image", rr.Image(frame))
 
     print(f"Saved -> {rrd_path}")
-
-
-def _save_geometry(geometry: dict, output_dir: Path) -> None:
-    """Save raw VGGT output: poses, depth, and a filtered .ply point cloud."""
-    import numpy as np
-    from scipy.spatial import cKDTree
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    np.savez(output_dir / "poses.npz", poses=geometry["poses"])
-    np.savez(output_dir / "depth.npz", depth=geometry["depth"],
-             depth_conf=geometry["depth_conf"], intrinsics=geometry["intrinsics"])
-
-    xyz, rgb, conf = geometry["xyz"], geometry["rgb"], geometry["xyz_conf"]
-    mask = conf > np.percentile(conf, 50)
-    xyz, rgb = xyz[mask], rgb[mask]
-
-    tree = cKDTree(xyz)
-    dists, _ = tree.query(xyz, k=17)
-    mean_dists = dists[:, 1:].mean(axis=1)
-    mask = mean_dists < mean_dists.mean() + 2.0 * mean_dists.std()
-    xyz, rgb = xyz[mask], rgb[mask]
-
-    ply_path = output_dir / "pointcloud_raw.ply"
-    n = len(xyz)
-    header = (
-        "ply\nformat binary_little_endian 1.0\n"
-        f"element vertex {n}\n"
-        "property float x\nproperty float y\nproperty float z\n"
-        "property uchar red\nproperty uchar green\nproperty uchar blue\n"
-        "end_header\n"
-    )
-    rgb_u8 = (np.clip(rgb, 0, 1) * 255).astype(np.uint8)
-    dtype = np.dtype([("x","<f4"),("y","<f4"),("z","<f4"),
-                      ("red","u1"),("green","u1"),("blue","u1")])
-    data = np.empty(n, dtype=dtype)
-    data["x"], data["y"], data["z"] = xyz[:,0], xyz[:,1], xyz[:,2]
-    data["red"], data["green"], data["blue"] = rgb_u8[:,0], rgb_u8[:,1], rgb_u8[:,2]
-    with open(ply_path, "wb") as f:
-        f.write(header.encode())
-        f.write(data.tobytes())
-
-    print(f"\nGeometry saved -> {output_dir}")
-    print(f"  poses.npz, depth.npz, pointcloud_raw.ply ({n:,} points)")
 
 
 if __name__ == "__main__":
