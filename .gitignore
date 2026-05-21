@@ -25,10 +25,8 @@ weights/
 *.ckpt
 *.safetensors
 
-# Generated outputs (heavy, machine-specific)
-outputs/
+# Generated outputs — tracked via Git LFS
 *.ply
-*.npz
 *.npy
 
 # Media (keep small examples in /examples, gitignore the rest)
