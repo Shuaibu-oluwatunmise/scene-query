@@ -70,7 +70,9 @@ rerun outputs/tabletop/query_bulldozer.rrd
 
 <img src="outputs/tabletop/tabletop.png" width="70%"/>
 
-**Query: `"find the bulldozer"`** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene. See the GIF above.
+**Query: `"find the bulldozer"`** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene:
+
+<img src="outputs/tabletop/query.png" width="70%"/>
 
 The object here is a LEGO Technic bulldozer — chosen deliberately to show that queries can be specific and unconventional. There was no bulldozer class trained anywhere. Grounding DINO found it from the text prompt alone.
 
