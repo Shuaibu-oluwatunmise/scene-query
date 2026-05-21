@@ -16,7 +16,7 @@ No fixed vocabulary. No retraining. Any object you can name, it can find.
 
 ---
 
-## Scenario 1 — just explore our outputs (no GPU needed)
+## Scenario 1 — just explore my outputs (no GPU needed)
 
 All you need is [Rerun](https://rerun.io) and Git LFS to pull the output files.
 
@@ -126,14 +126,16 @@ Outputs saved to the `--out` directory:
 
 **Specific object:**
 ```bash
-python query.py outputs/tabletop bulldozer \
+python query.py outputs/tabletop "find the bulldozer" \
     --images examples/tabletop \
     --save-rrd outputs/tabletop/query_bulldozer.rrd
 ```
 
-**Multiple objects at once:**
+The `"find the"` prefix is optional — `bulldozer` works just as well.
+
+**Multiple objects — comma-separated in plain English:**
 ```bash
-python query.py outputs/tabletop bulldozer cup bottle \
+python query.py outputs/tabletop "find the bulldozer, cup, bottle" \
     --images examples/tabletop \
     --save-rrd outputs/tabletop/query_multi.rrd
 ```

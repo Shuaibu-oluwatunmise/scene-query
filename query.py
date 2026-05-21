@@ -430,9 +430,13 @@ def main() -> None:
         labels = PRESETS[args.preset]
         print(f"Preset '{args.preset}': querying {len(labels)} object classes")
     elif args.query:
+        # Support both "find the bulldozer, cup, bottle" and separate args
+        raw = []
+        for q in args.query:
+            raw.extend([x.strip() for x in q.split(",") if x.strip()])
         labels = [
             q.lower().removeprefix("find the ").removeprefix("find ").strip()
-            for q in args.query
+            for q in raw
         ]
         print(f"Querying: {labels}")
     else:
