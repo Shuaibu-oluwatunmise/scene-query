@@ -29,11 +29,12 @@ weights/
 *.ply
 *.npy
 
-# Media (keep small examples in /examples, gitignore the rest)
+# Media — demo videos in outputs tracked via Git LFS
 *.mp4
 *.mov
 *.avi
 !examples/*.mp4
+!outputs/**/*.mp4
 
 # Logs and profiling
 *.log
