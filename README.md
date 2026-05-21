@@ -15,11 +15,11 @@
 </p>
 
 <p align="center">
-  <video src="outputs/tabletop/demo.mp4" autoplay loop muted playsinline width="80%"></video>
+  <img src="outputs/tabletop/demo.gif" width="80%" alt="Tabletop reconstruction + bulldozer query demo"/>
 </p>
 
 <p align="center">
-  <em>Tabletop scene — 3D reconstruction + querying "find the bulldozer" &nbsp;|&nbsp; Full environment preset demo coming soon</em>
+  <em>Tabletop scene — 3D reconstruction + querying "find the bulldozer"</em>
 </p>
 
 ---
@@ -70,9 +70,7 @@ rerun outputs/tabletop/query_bulldozer.rrd
 
 <img src="outputs/tabletop/tabletop.png" width="70%"/>
 
-**Query: `"find the bulldozer"`** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene:
-
-<img src="outputs/tabletop/query.png" width="70%"/>
+**Query: `"find the bulldozer"`** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene. See the GIF above.
 
 The object here is a LEGO Technic bulldozer — chosen deliberately to show that queries can be specific and unconventional. There was no bulldozer class trained anywhere. Grounding DINO found it from the text prompt alone.
 
@@ -213,9 +211,7 @@ Results (1 objects found):
 | Query | `"find the bulldozer"` |
 | Result | Detected in all 25 frames at 0.89 confidence, 522K points lifted to 3D |
 
-| Reconstruction | Query |
-|---|---|
-| <img src="outputs/tabletop/tabletop.png" width="360"/> | <img src="outputs/tabletop/query.png" width="360"/> |
+See the GIF at the top and the reconstruction screenshot above.
 
 ### Office / home walkthrough — video input, preset query *(coming soon)*
 
