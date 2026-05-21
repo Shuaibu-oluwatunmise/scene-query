@@ -497,7 +497,7 @@ def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) 
         "obb_quat":        obb["quat"],
         "n_points":        len(pts),
         "confidence":      0.5,
-        "indices":         np.where(collected)[0],
+        "indices":         np.array([], dtype=np.int64),
         "gsam2_detections": masks_per_frame,
     }
 
