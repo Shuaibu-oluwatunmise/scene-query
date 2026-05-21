@@ -468,6 +468,24 @@ def main() -> None:
                     print(f"Warning: {e}")
             result = results
 
+    else:
+        # No query argument — show all detected objects with OBBs
+        query_type = "object"
+        all_results = []
+        for label in sorted(scene["label_index"].keys()):
+            try:
+                r = query_object(scene, label)
+                all_results.append(r)
+            except (KeyError, ValueError):
+                pass
+        if all_results:
+            print(f"All objects in scene ({len(all_results)}):")
+            for r in all_results:
+                print(f"  {r['label']:20s}  centroid={r['centroid']}  n={r['n_points']}")
+            result = all_results
+        else:
+            print("No labelled objects found in scene.")
+
     if not args.no_vis:
         images_dir = args.images
         if images_dir is None:

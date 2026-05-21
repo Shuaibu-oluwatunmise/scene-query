@@ -172,13 +172,7 @@ def _save_rrd(
     scene: dict,
     rrd_path: Path,
 ) -> None:
-    """Write a Rerun .rrd with 4 panels:
-    1. Raw camera feed
-    2. 3D reconstruction (photo-coloured cloud + moving camera)
-    3. 2D detections: seg mask RGBA overlay + bounding boxes
-    4. 3D reconstruction + axis-aligned bounding box per detected label
-    """
-    import cv2
+    """Write a Rerun .rrd with 2 panels: raw camera feed | 3D reconstruction."""
     import numpy as np
     import rerun as rr
     import rerun.blueprint as rrb
@@ -187,27 +181,13 @@ def _save_rrd(
     bg = [20, 20, 20]
 
     blueprint = rrb.Blueprint(
-        rrb.Vertical(
-            rrb.Horizontal(
-                rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
-                rrb.Spatial3DView(
-                    name="3D Reconstruction",
-                    contents=["world/photo", "world/camera"],
-                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                    background=bg,
-                ),
-            ),
-            rrb.Horizontal(
-                rrb.Spatial2DView(
-                    name="Detections",
-                    contents=["camera/rgb", "camera/segmentation", "camera/detections"],
-                ),
-                rrb.Spatial3DView(
-                    name="3D + Labels",
-                    contents=["world/photo", "world/camera", "world/label_boxes/**"],
-                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                    background=bg,
-                ),
+        rrb.Horizontal(
+            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+            rrb.Spatial3DView(
+                name="3D Reconstruction",
+                contents=["world/photo", "world/camera"],
+                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                background=bg,
             ),
         ),
         rrb.TimePanel(playback_speed=0.1, loop_mode=rrb.components.LoopMode.All),
@@ -232,39 +212,15 @@ def _save_rrd(
         xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
-    # Static: gravity-aligned OBB per detected label (panel 4)
-    from src.scene_query.query_engine import _clean_and_fit_obb, _gravity_aligned_obb
-    scene_labels = scene["label"]
-    scene_xyz    = scene["xyz"]
-    poses        = geometry["poses"]
-    for lbl in np.unique(scene_labels):
-        pts = scene_xyz[scene_labels == lbl]
-        if len(pts) < 4:
-            continue
-        if len(pts) > 50_000:
-            sub = np.random.choice(len(pts), 50_000, replace=False)
-            pts = pts[sub]
-        pts_clean = _clean_and_fit_obb(pts, poses)
-        if len(pts_clean) < 4:
-            continue
-        obb = _gravity_aligned_obb(pts_clean, poses)
-        rr.log(f"world/label_boxes/{lbl}", rr.Boxes3D(
-            centers=[obb["center"].tolist()],
-            half_sizes=[obb["half"].tolist()],
-            quaternions=[rr.Quaternion(xyzw=obb["quat"].tolist())],
-            colors=[_label_colour(lbl)],
-            labels=[lbl],
-        ), static=True)
-
-    # Per-frame timeline
+    # Per-frame timeline: camera feed + moving camera frustum
     for i, frame in enumerate(frames):
         rr.set_time("frame", sequence=i)
 
         H_orig, W_orig = frame.shape[:2]
         rr.log("camera/rgb", rr.Image(frame))
 
-        pose = geometry["poses"][i]
-        K    = geometry["intrinsics"][i]
+        pose   = geometry["poses"][i]
+        K      = geometry["intrinsics"][i]
         sx, sy = W_orig / W_d, H_orig / H_d
 
         rr.log("world/camera", rr.Transform3D(
@@ -277,38 +233,6 @@ def _save_rrd(
             width=W_orig, height=H_orig,
         ))
         rr.log("world/camera/image", rr.Image(frame))
-
-        frame_dets = masks_per_frame[i] if i < len(masks_per_frame) else []
-        bbox_dets  = [d for d in frame_dets if "bbox" in d]
-
-        # Panel 3a: seg mask RGBA overlay
-        seg_img = np.zeros((H_orig, W_orig, 4), dtype=np.uint8)
-        for d in bbox_dets:
-            mask = d.get("mask")
-            if mask is None:
-                continue
-            if mask.shape != (H_orig, W_orig):
-                mask = cv2.resize(
-                    mask.astype(np.uint8), (W_orig, H_orig),
-                    interpolation=cv2.INTER_NEAREST,
-                ).astype(bool)
-            color = _label_colour(d["label"])
-            seg_img[mask, :3] = color
-            seg_img[mask, 3]  = 150
-        rr.log("camera/segmentation", rr.Image(seg_img))
-
-        # Panel 3b: bounding boxes
-        if bbox_dets:
-            mins   = [[d["bbox"][0], d["bbox"][1]] for d in bbox_dets]
-            sizes  = [[d["bbox"][2] - d["bbox"][0], d["bbox"][3] - d["bbox"][1]]
-                      for d in bbox_dets]
-            colors = [_label_colour(d["label"]) for d in bbox_dets]
-            labels = [f"{d['label']} {d['confidence']:.2f}" for d in bbox_dets]
-            rr.log("camera/detections", rr.Boxes2D(
-                mins=mins, sizes=sizes, colors=colors, labels=labels,
-            ))
-        else:
-            rr.log("camera/detections", rr.Clear(recursive=False))
 
     print(f"Saved -> {rrd_path}")
 
