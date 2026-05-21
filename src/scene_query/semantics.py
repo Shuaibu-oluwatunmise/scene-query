@@ -67,6 +67,8 @@ def segment_frames_yolo(
         if results and len(results[0].boxes):
             for i, box in enumerate(results[0].boxes):
                 label = model.names[int(box.cls[0])].lower()
+                if label == "tv":
+                    label = "monitor"
                 # Skip classes outside the indoor/office/school set when the
                 # model has the full COCO vocabulary (80 classes).
                 if len(model.names) >= 80 and label not in _INDOOR_CLASSES:
