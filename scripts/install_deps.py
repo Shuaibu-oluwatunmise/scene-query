@@ -73,8 +73,8 @@ def main() -> None:
         run(pip + [str(src)], "pip install groundingdino")
 
     print("\n[4/4] SAM 2 (segmentation for fallback)...")
-    # sam2 on PyPI; includes the required config YAMLs in the package
-    run(pip + ["sam2"], "pip install sam2")
+    # --no-deps prevents sam2 from upgrading PyTorch to an incompatible CUDA build
+    run(pip + ["sam2", "--no-deps"], "pip install sam2")
 
     print("\n=== All dependencies installed. ===")
 

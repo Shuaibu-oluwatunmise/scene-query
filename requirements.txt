@@ -2,7 +2,8 @@
 #   https://pytorch.org/get-started/locally/
 #   e.g. pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
-numpy>=1.24
+numpy>=1.24,<2
+einops
 scipy>=1.11
 opencv-python>=4.8
 pillow>=10.0
@@ -15,6 +16,9 @@ rerun-sdk>=0.18
 # Semantics
 ultralytics
 pycocotools
+
+# GroundingDINO requires transformers<=4.40; newer versions removed get_head_mask from BertModel
+transformers==4.40.0
 
 # Model downloads
 gdown
