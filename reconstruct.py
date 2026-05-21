@@ -229,8 +229,10 @@ def _save_rrd(
     ), static=True)
 
     # Static: AABB per detected label (panel 4)
-    for lbl, idxs in scene["label_index"].items():
-        pts = scene["xyz"][np.array(idxs, dtype=np.int64)]
+    scene_labels = scene["label"]
+    scene_xyz    = scene["xyz"]
+    for lbl in np.unique(scene_labels):
+        pts = scene_xyz[scene_labels == lbl]
         if len(pts) == 0:
             continue
         bmin   = pts.min(axis=0)
