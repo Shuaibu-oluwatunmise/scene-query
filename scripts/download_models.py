@@ -2,7 +2,6 @@
 
 Downloads:
   - VGGT-Omega weights (~4.3 GB) from Google Drive
-  - YOLO office detector weights (~6 MB) from Google Drive
   - Grounding DINO weights + config (~700 MB) from GitHub
   - SAM 2.1 large weights (~900 MB) from Meta CDN
 
@@ -14,9 +13,7 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-# Google Drive file/folder IDs
 VGGT_GDRIVE_ID  = "12AVRrnZ86Yn6v6GhL5jbbJkV_RuKXO-9"
-YOLO_GDRIVE_ID  = "1K2kK6ZiL93V06uZOH4D5oE-TzQAdLDHM"
 
 # Grounding DINO + SAM 2.1
 GDINO_WEIGHTS_URL = "https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth"
@@ -25,7 +22,6 @@ SAM21_WEIGHTS_URL = "https://dl.fbaipublicfiles.com/segment_anything_2/092824/sa
 
 REPO_ROOT     = Path(__file__).parent.parent
 CKPT_ROOT     = REPO_ROOT / "checkpoints"
-YOLO_PT       = CKPT_ROOT / "yolo_office" / "best.pt"
 VGGT_PT       = CKPT_ROOT / "vggt_omega" / "vggt_omega_1b_512.pt"
 GDINO_DIR     = CKPT_ROOT / "grounding_dino"
 GDINO_WEIGHTS = GDINO_DIR / "groundingdino_swint_ogc.pth"
@@ -101,36 +97,6 @@ def download_vggt_omega() -> None:
     print(f"  VGGT-Omega ready: {VGGT_PT}  ({VGGT_PT.stat().st_size/1e9:.2f} GB)")
 
 
-def download_yolo() -> None:
-    import gdown
-
-    if YOLO_PT.exists():
-        print(f"  YOLO weights already present ({YOLO_PT}) — skipping.")
-        return
-
-    print("  Downloading YOLO office weights from Google Drive...")
-    dest = CKPT_ROOT / "yolo_office"
-    dest.mkdir(parents=True, exist_ok=True)
-    zip_path = CKPT_ROOT / "yolo_office.zip"
-
-    gdown.download(id=YOLO_GDRIVE_ID, output=str(zip_path), fuzzy=True, quiet=False)
-
-    if not zip_path.exists():
-        print("ERROR: Download failed — file not found after gdown.")
-        sys.exit(1)
-
-    if zipfile.is_zipfile(zip_path):
-        _unzip(zip_path, dest)
-    else:
-        zip_path.rename(dest / "best.pt")
-
-    if not YOLO_PT.exists():
-        print(f"ERROR: Expected {YOLO_PT} after download — check the file on Google Drive.")
-        sys.exit(1)
-
-    print(f"  YOLO weights ready: {YOLO_PT}")
-
-
 def download_gsam2() -> None:
     if GDINO_WEIGHTS.exists():
         print(f"  Grounding DINO weights already present — skipping.")
@@ -152,13 +118,10 @@ def main() -> None:
     print("=== Downloading model weights ===\n")
     _ensure_gdown()
 
-    print("[1/3] VGGT-Omega")
+    print("[1/2] VGGT-Omega")
     download_vggt_omega()
 
-    print("\n[2/3] YOLO office detector")
-    download_yolo()
-
-    print("\n[3/3] Grounding DINO + SAM 2.1 (open-vocabulary fallback)")
+    print("\n[2/2] Grounding DINO + SAM 2.1")
     download_gsam2()
 
     print("\nAll weights ready.")

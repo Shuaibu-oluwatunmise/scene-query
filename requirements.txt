@@ -13,11 +13,7 @@ requests
 # Visualisation
 rerun-sdk>=0.18
 
-# Semantics
-ultralytics
-pycocotools
-
-# GroundingDINO requires transformers<=4.40; newer versions removed get_head_mask from BertModel
+# GroundingDINO requires transformers==4.40; newer versions removed get_head_mask from BertModel
 transformers==4.40.0
 
 # Model downloads

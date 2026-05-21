@@ -1,8 +1,5 @@
-"""2D mask + depth + pose -> labelled world-space point cloud."""
+"""2D mask + depth + pose -> world-space point cloud."""
 from __future__ import annotations
-
-import json
-from pathlib import Path
 
 import cv2
 import numpy as np
@@ -133,38 +130,3 @@ def lift_masks(
     }
 
 
-def save_scene(scene: dict, output_dir: str | Path) -> None:
-    """Persist a labelled scene to disk.
-
-    Writes:
-        pointcloud.npz  -- xyz, rgb, label, confidence arrays
-        poses.npz       -- camera-to-world pose matrices (if present in scene)
-        labels.json     -- {label: [point_indices]} for fast lookup
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    np.savez_compressed(
-        output_dir / "pointcloud.npz",
-        xyz=scene["xyz"],
-        rgb=scene["rgb"],
-        label=scene["label"],
-        confidence=scene["confidence"],
-    )
-
-    if "poses" in scene and scene["poses"] is not None:
-        np.savez_compressed(output_dir / "poses.npz", poses=scene["poses"])
-
-    # Build label -> [indices] index
-    label_index: dict[str, list[int]] = {}
-    for idx, lbl in enumerate(scene["label"]):
-        key = str(lbl)
-        label_index.setdefault(key, []).append(idx)
-
-    with open(output_dir / "labels.json", "w") as f:
-        json.dump(label_index, f)
-
-    n = len(scene["xyz"])
-    print(f"  {n:,} labelled points across {len(label_index)} labels:")
-    for lbl, idxs in sorted(label_index.items(), key=lambda kv: -len(kv[1])):
-        print(f"    {lbl}: {len(idxs):,} points")

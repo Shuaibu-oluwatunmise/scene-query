@@ -1,7 +1,8 @@
 """One-shot setup for scene-query.
 
-Downloads VGGT-Omega + YOLO weights and installs all Python dependencies.
-Run this once on a GPU machine before using reconstruct.py.
+Downloads VGGT-Omega, Grounding DINO, and SAM 2.1 weights, then installs
+all Python dependencies. Run this once on a GPU machine before using
+reconstruct.py or query.py.
 
 Usage:
     python setup.py
@@ -80,14 +81,13 @@ def main() -> None:
     print("    python reconstruct.py --video examples/myscene.mp4 \\")
     print("        --out outputs/scene --save-rrd outputs/scene.rrd")
     print()
-    print("  Query a known object (uses lifted point cloud — fast):")
-    print('    python query.py outputs/scene chair --save-rrd outputs/query.rrd')
+    print("  Query an object:")
+    print('    python query.py outputs/scene "find the bulldozer" \\')
+    print('        --images examples/myscene --save-rrd outputs/query.rrd')
     print()
-    print("  Query any object (Grounding DINO + SAM2 fallback — slower):")
-    print('    python query.py outputs/scene bulldozer --save-rrd outputs/query.rrd')
-    print()
-    print("  Show all detected objects:")
-    print('    python query.py outputs/scene --save-rrd outputs/query.rrd')
+    print("  Scan a full environment:")
+    print('    python query.py outputs/scene --preset office \\')
+    print('        --images examples/myscene --save-rrd outputs/query.rrd')
     print("=" * 60)
 
 
