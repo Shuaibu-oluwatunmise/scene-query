@@ -65,7 +65,7 @@ def main() -> None:
 
     print("\n[3/4] Grounding DINO (open-vocabulary detection)...")
     # ninja makes CUDA extension compilation much faster
-    run(pip + ["install", "ninja"], "ninja")
+    run(pip + ["ninja"], "ninja")
     _ensure_cuda_home()
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "GroundingDINO"
@@ -74,7 +74,7 @@ def main() -> None:
 
     print("\n[4/4] SAM 2 (segmentation for fallback)...")
     # sam2 on PyPI; includes the required config YAMLs in the package
-    run(pip + ["install", "sam2"], "pip install sam2")
+    run(pip + ["sam2"], "pip install sam2")
 
     print("\n=== All dependencies installed. ===")
 
