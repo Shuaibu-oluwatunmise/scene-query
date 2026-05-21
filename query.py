@@ -479,6 +479,7 @@ def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) 
 
     print(f"  Collected {len(pts):,} points via GSAM2 + depth back-projection")
 
+    poses = scene["poses"]
     pts_clean = _clean_and_fit_obb(pts, poses)
     if len(pts_clean) < 3:
         pts_clean = pts
