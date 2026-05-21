@@ -8,23 +8,16 @@ import numpy as np
 _REPO_ROOT    = Path(__file__).parent.parent.parent
 _YOLO_WEIGHTS = _REPO_ROOT / "checkpoints" / "yolo_office" / "best.pt"
 
-# COCO classes relevant to homes, schools, and offices.
-# Vehicles, animals, outdoor furniture, and sports gear are excluded.
+# COCO classes relevant to offices, workspaces, and classrooms.
+# Appliances, food, outdoor items, and niche personal items are excluded.
 _INDOOR_CLASSES = {
     "person",
-    # furniture & fixtures
-    "chair", "couch", "bed", "dining table", "toilet", "potted plant",
+    # seating & furniture
+    "chair", "couch", "dining table", "potted plant",
     # screens & peripherals
-    "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-    # kitchen / appliances
-    "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl",
-    "microwave", "oven", "toaster", "sink", "refrigerator",
-    # office / school
-    "book", "scissors", "clock", "vase",
-    # bags & personal items
-    "backpack", "handbag", "suitcase", "umbrella", "tie",
-    # home
-    "teddy bear", "hair drier", "toothbrush",
+    "monitor", "laptop", "mouse", "keyboard", "remote", "cell phone",
+    # common desk / room items
+    "bottle", "cup", "bowl", "book", "scissors", "clock", "vase", "backpack",
 }
 
 

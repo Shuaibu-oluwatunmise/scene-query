@@ -189,23 +189,27 @@ def _visualise_focused(
     )
 
     blueprint = rrb.Blueprint(
-        rrb.Horizontal(
-            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
-            rrb.Spatial3DView(
-                name="3D Reconstruction",
-                contents=["world/photo", "world/camera"],
-                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                background=bg,
+        rrb.Vertical(
+            rrb.Horizontal(
+                rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+                rrb.Spatial3DView(
+                    name="3D Reconstruction",
+                    contents=["world/photo", "world/camera"],
+                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                    background=bg,
+                ),
             ),
-            rrb.Spatial2DView(
-                name=f"Detections — {label}",
-                contents=["camera/rgb", "camera/query_dets"],
-            ),
-            rrb.Spatial3DView(
-                name=f"{label} — bbox",
-                contents=["world/photo", "world/query_bbox"],
-                eye_controls=first_cam_eye,
-                background=bg,
+            rrb.Horizontal(
+                rrb.Spatial2DView(
+                    name=f"Detections — {label}",
+                    contents=["camera/rgb", "camera/query_dets"],
+                ),
+                rrb.Spatial3DView(
+                    name=f"{label} — bbox",
+                    contents=["world/photo", "world/query_bbox"],
+                    eye_controls=first_cam_eye,
+                    background=bg,
+                ),
             ),
         ),
         rrb.TimePanel(playback_speed=0.1, loop_mode=rrb.components.LoopMode.All),
@@ -317,23 +321,27 @@ def _visualise_multi(
     )
 
     blueprint = rrb.Blueprint(
-        rrb.Horizontal(
-            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
-            rrb.Spatial3DView(
-                name="3D Reconstruction",
-                contents=["world/photo", "world/camera"],
-                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                background=bg,
+        rrb.Vertical(
+            rrb.Horizontal(
+                rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+                rrb.Spatial3DView(
+                    name="3D Reconstruction",
+                    contents=["world/photo", "world/camera"],
+                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                    background=bg,
+                ),
             ),
-            rrb.Spatial2DView(
-                name=f"Detections — {name}",
-                contents=["camera/rgb", "camera/query_dets"],
-            ),
-            rrb.Spatial3DView(
-                name="Bounding Boxes",
-                contents=["world/photo", "world/query_bbox/**"],
-                eye_controls=first_cam_eye,
-                background=bg,
+            rrb.Horizontal(
+                rrb.Spatial2DView(
+                    name=f"Detections — {name}",
+                    contents=["camera/rgb", "camera/query_dets"],
+                ),
+                rrb.Spatial3DView(
+                    name="Bounding Boxes",
+                    contents=["world/photo", "world/query_bbox/**"],
+                    eye_controls=first_cam_eye,
+                    background=bg,
+                ),
             ),
         ),
         rrb.TimePanel(playback_speed=0.1, loop_mode=rrb.components.LoopMode.All),

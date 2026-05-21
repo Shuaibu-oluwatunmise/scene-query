@@ -187,23 +187,27 @@ def _save_rrd(
     bg = [20, 20, 20]
 
     blueprint = rrb.Blueprint(
-        rrb.Horizontal(
-            rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
-            rrb.Spatial3DView(
-                name="3D Reconstruction",
-                contents=["world/photo", "world/camera"],
-                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                background=bg,
+        rrb.Vertical(
+            rrb.Horizontal(
+                rrb.Spatial2DView(name="Camera", contents=["camera/rgb"]),
+                rrb.Spatial3DView(
+                    name="3D Reconstruction",
+                    contents=["world/photo", "world/camera"],
+                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                    background=bg,
+                ),
             ),
-            rrb.Spatial2DView(
-                name="Detections",
-                contents=["camera/rgb", "camera/segmentation", "camera/detections"],
-            ),
-            rrb.Spatial3DView(
-                name="3D + Labels",
-                contents=["world/photo", "world/camera", "world/label_boxes/**"],
-                eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
-                background=bg,
+            rrb.Horizontal(
+                rrb.Spatial2DView(
+                    name="Detections",
+                    contents=["camera/rgb", "camera/segmentation", "camera/detections"],
+                ),
+                rrb.Spatial3DView(
+                    name="3D + Labels",
+                    contents=["world/photo", "world/camera", "world/label_boxes/**"],
+                    eye_controls=ba.EyeControls3D(tracking_entity="world/camera"),
+                    background=bg,
+                ),
             ),
         ),
         rrb.TimePanel(playback_speed=0.1, loop_mode=rrb.components.LoopMode.All),
@@ -228,20 +232,26 @@ def _save_rrd(
         xyz_all[keep], colors=rgb_u8, radii=rr.Radius.ui_points(2.0),
     ), static=True)
 
-    # Static: AABB per detected label (panel 4)
+    # Static: gravity-aligned OBB per detected label (panel 4)
+    from src.scene_query.query_engine import _clean_and_fit_obb, _gravity_aligned_obb
     scene_labels = scene["label"]
     scene_xyz    = scene["xyz"]
+    poses        = geometry["poses"]
     for lbl in np.unique(scene_labels):
         pts = scene_xyz[scene_labels == lbl]
-        if len(pts) == 0:
+        if len(pts) < 4:
             continue
-        bmin   = pts.min(axis=0)
-        bmax   = pts.max(axis=0)
-        center = ((bmin + bmax) / 2).tolist()
-        half   = ((bmax - bmin) / 2).tolist()
+        if len(pts) > 50_000:
+            sub = np.random.choice(len(pts), 50_000, replace=False)
+            pts = pts[sub]
+        pts_clean = _clean_and_fit_obb(pts, poses)
+        if len(pts_clean) < 4:
+            continue
+        obb = _gravity_aligned_obb(pts_clean, poses)
         rr.log(f"world/label_boxes/{lbl}", rr.Boxes3D(
-            centers=[center],
-            half_sizes=[half],
+            centers=[obb["center"].tolist()],
+            half_sizes=[obb["half"].tolist()],
+            quaternions=[rr.Quaternion(xyzw=obb["quat"].tolist())],
             colors=[_label_colour(lbl)],
             labels=[lbl],
         ), static=True)
