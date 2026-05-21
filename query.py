@@ -250,7 +250,10 @@ def _visualise_focused(
     # Per-frame timeline
     from src.scene_query.geometry import load_frames_from_dir
     frames     = load_frames_from_dir(images_dir)
-    detections = _load_detections(scene_dir)
+    # Use GSAM2 per-frame detections if the result came from the fallback,
+    # otherwise fall back to the YOLO detections saved by reconstruct.py
+    gsam2_dets = result.get("gsam2_detections")
+    detections = gsam2_dets if gsam2_dets is not None else _load_detections(scene_dir)
 
     intr       = np.load(scene_dir / "intrinsics.npz")
     intrinsics = intr["intrinsics"]
@@ -277,7 +280,7 @@ def _visualise_focused(
 
         # Panel 3: bboxes for this label only
         frame_dets = detections[i] if i < len(detections) else []
-        hits = [d for d in frame_dets if d["label"] == label]
+        hits = [d for d in frame_dets if d.get("label") == label and "bbox" in d]
         if hits:
             rr.log("camera/query_dets", rr.Boxes2D(
                 mins=[[d["bbox"][0], d["bbox"][1]] for d in hits],
@@ -465,7 +468,8 @@ def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) 
         sub    = np.random.choice(len(xyz_bg), MAX_PTS, replace=False)
         xyz_bg = xyz_bg[sub]
 
-    collected = np.zeros(len(xyz_bg), dtype=bool)
+    collected  = np.zeros(len(xyz_bg), dtype=bool)
+    DEPTH_TOL  = 0.08  # keep points within 8 cm of the nearest surface at each pixel
 
     for i, (frame, frame_dets) in enumerate(zip(frames, masks_per_frame)):
         if not frame_dets:
@@ -492,9 +496,18 @@ def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) 
         yi    = (fy * p_cam[:, 1] / z + cy_k).astype(np.int32)
         valid &= (xi >= 0) & (xi < W_orig) & (yi >= 0) & (yi < H_orig)
 
-        xc = np.clip(xi, 0, W_orig - 1)
-        yc = np.clip(yi, 0, H_orig - 1)
-        collected |= valid & combined_mask[yc, xc]
+        xi_s = np.clip(xi, 0, W_orig - 1)
+        yi_s = np.clip(yi, 0, H_orig - 1)
+        flat = yi_s * W_orig + xi_s
+
+        in_mask = valid & combined_mask[yi_s, xi_s]
+
+        # Build per-pixel depth buffer — keep only the frontmost surface point
+        depth_buf = np.full(H_orig * W_orig, np.inf)
+        np.minimum.at(depth_buf, flat[in_mask], p_cam[in_mask, 2])
+
+        near_front = p_cam[:, 2] <= depth_buf[flat] + DEPTH_TOL
+        collected |= in_mask & near_front
 
     pts = xyz_bg[collected]
     if len(pts) < 10:
@@ -510,16 +523,17 @@ def _gsam2_fallback(scene: dict, scene_dir: Path, label: str, images_dir: Path) 
     obb    = _gravity_aligned_obb(pts_clean, poses)
 
     return {
-        "label":      label,
-        "centroid":   center,
-        "bbox_min":   pts_clean.min(axis=0).astype(np.float32),
-        "bbox_max":   pts_clean.max(axis=0).astype(np.float32),
-        "obb_center": obb["center"],
-        "obb_half":   obb["half"],
-        "obb_quat":   obb["quat"],
-        "n_points":   len(pts),
-        "confidence": 0.5,
-        "indices":    np.where(collected)[0],
+        "label":           label,
+        "centroid":        center,
+        "bbox_min":        pts_clean.min(axis=0).astype(np.float32),
+        "bbox_max":        pts_clean.max(axis=0).astype(np.float32),
+        "obb_center":      obb["center"],
+        "obb_half":        obb["half"],
+        "obb_quat":        obb["quat"],
+        "n_points":        len(pts),
+        "confidence":      0.5,
+        "indices":         np.where(collected)[0],
+        "gsam2_detections": masks_per_frame,
     }
 
 
