@@ -207,7 +207,7 @@ python query.py outputs/tabletop "find the bulldozer, cup, bottle" \
 
 **Full environment scan using a preset:**
 
-> **`--images` flag:** pass the original image directory for image input (e.g. `--images examples/tabletop`), or the extracted frames directory for video input (e.g. `--images outputs/office_scene/frames` — saved automatically by `reconstruct.py`).
+The `--images` flag gives you explicit control over which frames are used for the query. For image input, pass your original image directory. For video input, pass the frames directory saved by `reconstruct.py` — or swap in any other frame set if you want to query against a different selection. This separation means you can re-query with different frames without re-running reconstruction.
 
 ```bash
 python query.py outputs/office_scene \

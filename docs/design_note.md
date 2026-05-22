@@ -81,7 +81,7 @@ The architecture is **Grounding DINO + SAM 2**, operating at query time rather t
 
 **Why at query time, not reconstruction time.** Running detection and segmentation over every frame is expensive. Doing it at reconstruction time would commit the semantic predictions upfront and make re-querying with different labels require rerunning the entire pipeline. Running GSAM2 at query time means: reconstruct once (expensive), query many times (cheap). The 3D geometry is stable; the semantic interpretation can be updated freely.
 
-**Presets.** For full-environment scans, a preset maps an environment type to a list of object classes. The office preset queries keyboard, mouse, chair, and laptop in a single pass. This is a lightweight mechanism for structured exploration — not pre-programmed detection, just a curated list of likely objects for a known domain.
+**Presets.** For full-environment scans, a preset maps an environment type to a curated list of object classes and runs them all in a single query pass. This is deliberately simple — presets are not learned or generated automatically, they are hand-curated lists. The simplicity is intentional: for a known deployment domain (office, warehouse, kitchen), a short object list is more reliable and faster than prompting with the full vocabulary. The interesting capability is that each item in the list still goes through open-vocabulary detection — the preset just decides what to ask for, it does not constrain how the system finds it.
 
 ---
 
