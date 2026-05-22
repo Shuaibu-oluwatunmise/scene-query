@@ -16,6 +16,10 @@ rerun-sdk==0.32.1
 # GroundingDINO requires transformers==4.40; newer versions removed get_head_mask from BertModel
 transformers==4.40.0
 
+# SAM 2 runtime deps (sam2 itself is installed with --no-deps to avoid torch conflicts)
+hydra-core>=1.3.2
+iopath
+
 # Model downloads
 gdown
 huggingface_hub
