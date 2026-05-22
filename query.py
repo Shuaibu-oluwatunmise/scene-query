@@ -25,8 +25,7 @@ from src.scene_query.query_engine import (
 # ---------------------------------------------------------------------------
 
 PRESETS: dict[str, list[str]] = {
-    "office":    ["monitor", "keyboard", "mouse", "chair", "desk", "laptop",
-                  "printer", "phone", "cup", "pen", "whiteboard"],
+    "office":    ["keyboard", "mouse", "chair", "laptop"],
     "home":      ["sofa", "chair", "table", "tv", "lamp", "plant", "mug",
                   "remote control", "book", "bed", "cushion"],
     "classroom": ["chair", "desk", "whiteboard", "projector", "laptop",
