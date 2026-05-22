@@ -30,6 +30,9 @@
 
 No fixed vocabulary. No retraining. Any object you can name, it can find.
 
+> **See how I think:** [Design note](docs/design_note.md) — architecture decisions, why VGGT-Omega, why open-vocabulary, what I deliberately didn't do.
+> **See what I learned:** [Reflection](docs/reflection.md) — what worked, what was harder than expected, what I'd do with more time.
+
 > **Reconstruct once, query many times.** `reconstruct.py` is the expensive step — run it once per scene. After that, `query.py` can be run repeatedly on the same scene with different queries, no re-reconstruction needed.
 
 ---
