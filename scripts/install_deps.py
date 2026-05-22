@@ -70,7 +70,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "GroundingDINO"
         run(["git", "clone", "--depth=1", GDINO_GH, str(src)], "git clone GroundingDINO")
-        run(pip + [str(src)], "pip install groundingdino")
+        run(pip + ["--no-build-isolation", str(src)], "pip install groundingdino")
 
     print("\n[4/4] SAM 2 (segmentation for fallback)...")
     # --no-deps prevents sam2 from upgrading PyTorch to an incompatible CUDA build
