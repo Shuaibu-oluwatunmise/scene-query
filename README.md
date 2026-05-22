@@ -192,6 +192,9 @@ python query.py outputs/tabletop "find the bulldozer, cup, bottle" \
 ```
 
 **Full environment scan using a preset:**
+
+> **`--images` flag:** pass the original image directory for image input (e.g. `--images examples/tabletop`), or the extracted frames directory for video input (e.g. `--images outputs/office_scene/frames` — saved automatically by `reconstruct.py`).
+
 ```bash
 python query.py outputs/office_scene \
     --preset office \
@@ -199,9 +202,7 @@ python query.py outputs/office_scene \
     --save-rrd outputs/office_scene/query_office.rrd
 ```
 
-Available presets: `office`, `home`, `classroom`, `kitchen`, `warehouse`.
-
-> **Video input note:** pass `--images outputs/office_scene/frames` — these are the frames extracted by `reconstruct.py`. For image input, pass the original image directory (e.g. `--images examples/tabletop`).
+Available presets: `office`, `home`, `classroom`, `kitchen`, `warehouse`. The `office` preset is the primary tested configuration — others use similar object lists for their environment type.
 
 Open the result:
 ```bash
@@ -213,7 +214,7 @@ rerun outputs/office_scene/query_office.rrd  # office
 ```
 Querying: ['bulldozer']
 
-Running GSAM2 query...
+Running GSAM2 query...        ← Grounding DINO detection + SAM 2 segmentation
   Running GSAM2 on 25 frames for: ['bulldozer']
   Frame 25/25: 1 dets  (25 total so far)
   bulldozer: 525,902 pts lifted, 522,377 after clean
@@ -233,14 +234,7 @@ Results (1 objects found):
 | Query | `"find the bulldozer"` |
 | Result | Detected in all 25 frames at 0.89 confidence, 522K points lifted to 3D |
 
-```bash
-python reconstruct.py --images examples/tabletop --out outputs/tabletop \
-    --save-rrd outputs/tabletop/tabletop.rrd
-
-python query.py outputs/tabletop "find the bulldozer" \
-    --images examples/tabletop \
-    --save-rrd outputs/tabletop/query_bulldozer.rrd
-```
+See steps 2 and 3 above for the exact commands.
 
 ### Office walkthrough — video input, preset query *(included)*
 
@@ -249,15 +243,7 @@ python query.py outputs/tabletop "find the bulldozer" \
 | Query | `--preset office` (keyboard, mouse, chair, laptop) |
 | Result | 4 objects found — keyboard 0.83, mouse 0.83, chair 0.72, laptop 0.75 |
 
-```bash
-python reconstruct.py --video examples/office_Scene.mp4 --out outputs/office_scene \
-    --fps 2.0 --max-frames 50 \
-    --save-rrd outputs/office_scene/reconstruct_office.rrd
-
-python query.py outputs/office_scene --preset office \
-    --images outputs/office_scene/frames \
-    --save-rrd outputs/office_scene/query_office.rrd
-```
+See steps 2 and 3 above for the exact commands.
 
 ---
 
