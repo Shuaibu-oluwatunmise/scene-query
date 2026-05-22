@@ -141,7 +141,7 @@ git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
 cd scene-query
 
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
 ```
 
 Install PyTorch with the right CUDA version before running setup — check yours with `nvidia-smi`:
