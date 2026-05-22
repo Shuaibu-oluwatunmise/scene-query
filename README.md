@@ -32,11 +32,15 @@ No fixed vocabulary. No retraining. Works across a wide range of objects without
 
 ---
 
+### My thought process
+
+I documented the reasoning behind every major decision in this project — what I chose, what I rejected, and why. If you want to understand how I approach a problem:
+
 **[Design note →](docs/design_note.md)**
-Architecture decisions, why VGGT-Omega, why open-vocabulary, known limitations, what I deliberately didn't do.
+How I framed the problem, why VGGT-Omega over COLMAP or NeRF, why open-vocabulary detection over a trained model, where the current implementation falls short, and what I'd do next.
 
 **[Reflection →](docs/reflection.md)**
-What worked, what was harder than expected, what I'd do with more time.
+What actually worked, what surprised me, what I'd prioritise with two more weeks, and what this sprint taught me about building perception systems.
 
 ---
 

@@ -4,6 +4,20 @@
 
 ---
 
+**Contents**
+1. [Framing](#1-framing)
+2. [Pipeline overview](#2-pipeline-overview)
+3. [Geometry: VGGT-Omega](#3-geometry-vggt-omega)
+4. [Semantics: open-vocabulary detection and segmentation](#4-semantics-open-vocabulary-detection-and-segmentation)
+5. [Lifting: SAM 2 masks to 3D](#5-lifting-sam-2-masks-to-3d)
+6. [Query layer and bounding box fitting](#6-query-layer-and-bounding-box-fitting)
+7. [Robot relevance](#7-robot-relevance)
+8. [What I deliberately didn't do](#8-what-i-deliberately-didnt-do)
+9. [Known limitations of this implementation](#9-known-limitations-of-this-implementation)
+10. [Future work](#10-future-work)
+
+---
+
 ## 1. Framing
 
 The challenge asks for 3D scene reconstruction from a short phone video. Most submissions will interpret "reconstruction" as producing a 3D model — a point cloud, a mesh, or a Gaussian splat — and evaluate success by visual fidelity. That is the wrong problem to solve.

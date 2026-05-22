@@ -4,6 +4,14 @@
 
 ---
 
+**Contents**
+1. [What worked](#what-worked)
+2. [What was harder than expected](#what-was-harder-than-expected)
+3. [What I'd do with 2 more weeks](#what-id-do-with-2-more-weeks)
+4. [What this taught me](#what-this-taught-me)
+
+---
+
 ## What worked
 
 **VGGT-Omega was the right call.** The geometry came out clean on the first run — accurate camera poses, dense depth maps, a well-structured point cloud. I expected to spend more time wrestling with reconstruction quality but the model just worked. Choosing a feed-forward model over COLMAP removed an entire class of per-scene failure modes (feature matching, loop closure, convergence) and I never had to touch it again after the first integration.
