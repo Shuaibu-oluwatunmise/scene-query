@@ -16,6 +16,7 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+.claude/
 
 # Model checkpoints — large weights gitignored, small YOLO model committed (6MB)
 checkpoints/*
