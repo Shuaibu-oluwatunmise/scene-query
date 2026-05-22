@@ -49,6 +49,25 @@ def _ensure_cuda_home() -> None:
     print("  If compilation fails, run:  export CUDA_HOME=/usr/local/cuda  then re-run setup.py")
 
 
+def _patch_gdino_cuda(src: Path) -> None:
+    """Replace deprecated tensor.type() with tensor.scalar_type() for PyTorch 2.x."""
+    targets = [
+        src / "groundingdino/models/GroundingDINO/csrc/MsDeformAttn/ms_deform_attn_cuda.cu",
+        src / "groundingdino/models/GroundingDINO/csrc/MsDeformAttn/ms_deform_attn.h",
+    ]
+    for path in targets:
+        if not path.exists():
+            print(f"  WARNING: patch target not found: {path}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        patched = text.replace("value.type()", "value.scalar_type()")
+        if patched != text:
+            path.write_text(patched, encoding="utf-8")
+            print(f"  Patched {path.name} (tensor.type -> scalar_type)")
+        else:
+            print(f"  {path.name}: no patch needed")
+
+
 def main() -> None:
     pip = [sys.executable, "-m", "pip", "install"]
 
@@ -70,6 +89,8 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "GroundingDINO"
         run(["git", "clone", "--depth=1", GDINO_GH, str(src)], "git clone GroundingDINO")
+        # Patch deprecated tensor.type() -> tensor.scalar_type() for PyTorch 2.x compatibility
+        _patch_gdino_cuda(src)
         run(pip + ["--no-build-isolation", str(src)], "pip install groundingdino")
 
     print("\n[4/4] SAM 2 (segmentation for fallback)...")
