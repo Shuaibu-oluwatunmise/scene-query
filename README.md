@@ -15,11 +15,13 @@
 </p>
 
 <p align="center">
-  <img src="outputs/tabletop/demo.gif" width="80%" alt="Tabletop reconstruction + bulldozer query demo"/>
+  <img src="outputs/tabletop/demo.gif" width="45%" alt="Tabletop — find the bulldozer"/>
+  &nbsp;
+  <img src="outputs/office_scene/office_demo.gif" width="45%" alt="Office — preset scan"/>
 </p>
 
 <p align="center">
-  <em>Tabletop scene — 3D reconstruction + querying "find the bulldozer"</em>
+  <em>Left: tabletop — querying "find the bulldozer" &nbsp;|&nbsp; Right: office walkthrough — preset scan</em>
 </p>
 
 ---
@@ -51,7 +53,7 @@ git lfs install
 git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
 cd scene-query
 
-pip install rerun-sdk
+pip install rerun-sdk==0.32.1
 ```
 
 **Open the 3D reconstruction:**
@@ -68,11 +70,11 @@ rerun outputs/tabletop/query_bulldozer.rrd
 
 **Reconstruction** — raw camera feed alongside the live 3D point cloud. Camera frustums move through the scene as you scrub the timeline:
 
-<img src="outputs/tabletop/tabletop.png" width="70%"/>
+<img src="outputs/tabletop/tabletop.png" width="45%"/> <img src="outputs/office_scene/office_reconstruct.png" width="45%"/>
 
-**Query: `"find the bulldozer"`** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene:
+**Query** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene:
 
-<img src="outputs/tabletop/query.png" width="70%"/>
+<img src="outputs/tabletop/query.png" width="45%"/> <img src="outputs/office_scene/office_query.png" width="45%"/>
 
 The object here is a LEGO Technic bulldozer — chosen deliberately to show that queries can be specific and unconventional. There was no bulldozer class trained anywhere. Grounding DINO found it from the text prompt alone.
 
@@ -215,12 +217,12 @@ Results (1 objects found):
 
 See the GIF at the top and the reconstruction screenshot above.
 
-### Office / home walkthrough — video input, preset query *(coming soon)*
+### Office walkthrough — video input, preset query
 
-| Input | Video walkthrough of an environment |
+| Input | Video walkthrough of an office scene |
 |---|---|
-| Query | `--preset office` |
-| Result | Every common object in the scene found and localised in one pass |
+| Query | `--preset office` (keyboard, mouse, chair, laptop) |
+| Result | 4 objects found — keyboard 0.83, mouse 0.83, chair 0.72, laptop 0.75 |
 
 ---
 
@@ -254,7 +256,9 @@ scene-query/
 │   ├── install_deps.py     # Dependency installer
 │   └── download_models.py  # Weight downloader
 ├── examples/
-│   └── tabletop/           # 25 input images
+│   ├── tabletop/           # 25 input images
+│   └── office_Scene.mp4    # Office walkthrough video
 └── outputs/
-    └── tabletop/           # Reconstruction + query outputs (Git LFS)
+    ├── tabletop/           # Reconstruction + query outputs (Git LFS)
+    └── office_scene/       # Office scene outputs (Git LFS)
 ```

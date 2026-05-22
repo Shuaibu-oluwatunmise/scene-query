@@ -11,7 +11,7 @@ tqdm>=4.65
 requests
 
 # Visualisation
-rerun-sdk>=0.18
+rerun-sdk==0.32.1
 
 # GroundingDINO requires transformers==4.40; newer versions removed get_head_mask from BertModel
 transformers==4.40.0
