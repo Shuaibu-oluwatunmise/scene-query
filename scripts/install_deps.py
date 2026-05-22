@@ -50,7 +50,14 @@ def _ensure_cuda_home() -> None:
 
 
 def _patch_gdino_cuda(src: Path) -> None:
-    """Replace deprecated tensor.type() with tensor.scalar_type() for PyTorch 2.x."""
+    """Patch GroundingDINO CUDA source for PyTorch 2.x compatibility.
+
+    Two distinct fixes:
+    - AT_ASSERTM(value.type().is_cuda()) → AT_ASSERTM(value.is_cuda())
+      scalar_type() returns c10::ScalarType which has no .is_cuda() method.
+    - AT_DISPATCH_FLOATING_TYPES(value.type(), ...) → value.scalar_type()
+      tensor.type() returning DeprecatedTypeProperties was removed in torch 2.x.
+    """
     targets = [
         src / "groundingdino/models/GroundingDINO/csrc/MsDeformAttn/ms_deform_attn_cuda.cu",
         src / "groundingdino/models/GroundingDINO/csrc/MsDeformAttn/ms_deform_attn.h",
@@ -60,10 +67,12 @@ def _patch_gdino_cuda(src: Path) -> None:
             print(f"  WARNING: patch target not found: {path}")
             continue
         text = path.read_text(encoding="utf-8")
-        patched = text.replace("value.type()", "value.scalar_type()")
+        # Order matters: fix .is_cuda() calls first, then remaining .type() calls
+        patched = text.replace("value.type().is_cuda()", "value.is_cuda()")
+        patched = patched.replace("value.type()", "value.scalar_type()")
         if patched != text:
             path.write_text(patched, encoding="utf-8")
-            print(f"  Patched {path.name} (tensor.type -> scalar_type)")
+            print(f"  Patched {path.name}")
         else:
             print(f"  {path.name}: no patch needed")
 
