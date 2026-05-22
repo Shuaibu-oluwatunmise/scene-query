@@ -290,6 +290,9 @@ scene-query/
 ├── scripts/
 │   ├── install_deps.py     # Dependency installer
 │   └── download_models.py  # Weight downloader
+├── docs/
+│   ├── design_note.md      # Architecture decisions and trade-offs
+│   └── reflection.md       # What worked, what I'd do next
 ├── examples/
 │   ├── tabletop/           # 25 input images
 │   └── office_Scene.mp4    # Office walkthrough video
