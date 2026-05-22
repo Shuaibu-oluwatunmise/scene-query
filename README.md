@@ -28,7 +28,7 @@
 
 **scene-query** takes a video or a folder of images, builds a dense 3D reconstruction, and lets you query it in plain English — *"find the bulldozer"*, *"find the chair"*, *"find the monitor"* — returning a tight 3D bounding box around the object, visualised with a full camera timeline. Or use a preset to scan the whole environment in one pass.
 
-No fixed vocabulary. No retraining. Any object you can name, it can find.
+No fixed vocabulary. No retraining. Works across a wide range of objects without modification — results vary with scene quality and how well the object matches Grounding DINO's training distribution.
 
 > **See how I think:** [Design note](docs/design_note.md) — architecture decisions, why VGGT-Omega, why open-vocabulary, what I deliberately didn't do.
 > **See what I learned:** [Reflection](docs/reflection.md) — what worked, what was harder than expected, what I'd do with more time.
