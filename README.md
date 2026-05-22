@@ -30,8 +30,15 @@
 
 No fixed vocabulary. No retraining. Works across a wide range of objects without modification — results vary with scene quality and how well the object matches Grounding DINO's training distribution.
 
-> **See how I think:** [Design note](docs/design_note.md) — architecture decisions, why VGGT-Omega, why open-vocabulary, what I deliberately didn't do.
-> **See what I learned:** [Reflection](docs/reflection.md) — what worked, what was harder than expected, what I'd do with more time.
+---
+
+**[Design note →](docs/design_note.md)**
+Architecture decisions, why VGGT-Omega, why open-vocabulary, known limitations, what I deliberately didn't do.
+
+**[Reflection →](docs/reflection.md)**
+What worked, what was harder than expected, what I'd do with more time.
+
+---
 
 > **Reconstruct once, query many times.** `reconstruct.py` is the expensive step — run it once per scene. After that, `query.py` can be run repeatedly on the same scene with different queries, no re-reconstruction needed.
 

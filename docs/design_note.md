@@ -125,7 +125,15 @@ These map directly to robot planning primitives: centroid is a task-space target
 
 ---
 
-## 9. Future work
+## 9. Known limitations of this implementation
+
+**Dark and black objects.** VGGT-Omega's depth estimation degrades significantly on dark or absorptive surfaces. Learned depth models rely on photometric cues — texture gradients, shading, and reflections — to infer distance. A matte black object provides almost none of these. The resulting depth map over that region is either missing, blurred out from surrounding surfaces, or numerically unstable. When the lifting step back-projects those pixels into 3D, the cluster is noisy or displaced from the object's true position. In practice: dark objects either fail to localise at all, or produce an inflated, poorly-shaped 3D cluster. This is a fundamental limitation of passive monocular depth, not a tunable parameter.
+
+**3D bounding box quality.** The oriented bounding box is fit to a cleaned point cluster, but the cluster itself is an approximation. SAM 2 masks have soft boundaries that don't align precisely with object edges. Depth noise inflates the cluster — especially along the depth axis, where per-pixel depth error compounds. The gravity-aligned OBB fitting (`cv2.minAreaRect` on the 2D footprint then extruded vertically) assumes a roughly upright camera and a flat-bottomed object. For objects that are tilted, thin, or partially occluded, the resulting box is often loose or misoriented. The bounding boxes are useful as coarse spatial indicators — "the chair is roughly here, roughly this big" — but not precise enough for contact-level manipulation without further refinement.
+
+---
+
+## 10. Future work
 
 **Live inference.** VGGT-Omega processes a fixed frame set offline. Swapping it for a streaming monocular depth estimator (e.g. Depth Anything V2) with a visual odometry front-end would make the geometry pipeline real-time capable.
 
