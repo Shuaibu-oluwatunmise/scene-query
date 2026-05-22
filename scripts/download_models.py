@@ -77,7 +77,7 @@ def download_vggt_omega() -> None:
     zip_path = CKPT_ROOT / "vggt_omega.zip"
 
     print("  Downloading VGGT-Omega weights from Google Drive (~4.3 GB)...")
-    gdown.download(id=VGGT_GDRIVE_ID, output=str(zip_path), fuzzy=True, quiet=False)
+    gdown.download(id=VGGT_GDRIVE_ID, output=str(zip_path), quiet=False)
 
     if not zip_path.exists():
         print("ERROR: Download failed — file not found after gdown.")
