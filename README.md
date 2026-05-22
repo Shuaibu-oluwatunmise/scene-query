@@ -26,7 +26,7 @@
 
 ---
 
-**scene-query** takes a video or a folder of images, builds a dense 3D reconstruction, and lets you query it in plain English — *"find the bulldozer"*, *"find the chair"*, *"find the monitor"* — returning a tight 3D bounding box around the object, visualised with a full camera timeline.
+**scene-query** takes a video or a folder of images, builds a dense 3D reconstruction, and lets you query it in plain English — *"find the bulldozer"*, *"find the chair"*, *"find the monitor"* — returning a tight 3D bounding box around the object, visualised with a full camera timeline. Or use a preset to scan the whole environment in one pass.
 
 No fixed vocabulary. No retraining. Any object you can name, it can find.
 
@@ -121,25 +121,19 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 Full list: https://pytorch.org/get-started/locally/
 
-### 1. Clone and install
+### 1. Clone and set up
 
 ```bash
 git lfs install
 git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
 cd scene-query
 
-pip install -r requirements.txt
-```
-
-### 2. Download model weights
-
-```bash
 python setup.py
 ```
 
-Downloads VGGT-Omega (~4.3 GB), Grounding DINO, and SAM 2.1 weights into `checkpoints/`.
+`setup.py` installs all Python dependencies (including GroundingDINO, SAM 2, and vggt-omega) and downloads model weights — VGGT-Omega (~4.3 GB), Grounding DINO, and SAM 2.1 — into `checkpoints/`.
 
-### 3. Reconstruct
+### 2. Reconstruct
 
 > **Tips for good results:** Move slowly around the scene. Keep plenty of frame overlap — aim for 1–2 seconds per step. Avoid motion blur. The more consistent your coverage, the better the depth maps.
 
@@ -179,7 +173,7 @@ Outputs saved to the `--out` directory:
 | `intrinsics.npz` | Camera intrinsics |
 | `*.rrd` | Rerun recording |
 
-### 4. Query
+### 3. Query
 
 **Specific object:**
 ```bash
