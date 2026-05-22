@@ -63,9 +63,15 @@ A robot that can be asked in plain language where objects are — without pre-pr
 All you need is [Rerun](https://rerun.io) and Git LFS to pull the output files.
 
 ```bash
+# Linux: install git-lfs if not already present
+sudo apt-get install git-lfs
+
 git lfs install
 git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
 cd scene-query
+
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
 pip install rerun-sdk==0.32.1
 ```
@@ -123,7 +129,22 @@ The bulldozer is a LEGO Technic model — chosen deliberately to show that queri
 - NVIDIA GPU (RTX 3080 or better recommended, ≥ 16 GB VRAM)
 - CUDA 12.x
 - Python 3.10+
-- PyTorch with CUDA — install this first:
+
+### 1. Clone and set up
+
+```bash
+# Linux: install git-lfs if not already present
+sudo apt-get install git-lfs
+
+git lfs install
+git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
+cd scene-query
+
+python -m venv .venv
+source .venv/bin/activate
+```
+
+Install PyTorch with the right CUDA version before running setup — check yours with `nvidia-smi`:
 
 ```bash
 # CUDA 12.4
@@ -135,13 +156,9 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 Full list: https://pytorch.org/get-started/locally/
 
-### 1. Clone and set up
+Then run setup:
 
 ```bash
-git lfs install
-git clone https://github.com/Shuaibu-oluwatunmise/scene-query.git
-cd scene-query
-
 python setup.py
 ```
 
