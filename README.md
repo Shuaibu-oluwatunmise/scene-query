@@ -56,27 +56,47 @@ cd scene-query
 pip install rerun-sdk==0.32.1
 ```
 
-**Open the 3D reconstruction:**
+**Tabletop — specific object query:**
 ```bash
-rerun outputs/tabletop/tabletop.rrd
+rerun outputs/tabletop/tabletop.rrd           # reconstruction
+rerun outputs/tabletop/query_bulldozer.rrd    # bulldozer query
 ```
 
-**Open the bulldozer query result:**
+**Office — preset scan:**
 ```bash
-rerun outputs/tabletop/query_bulldozer.rrd
+rerun outputs/office_scene/reconstruct_office.rrd   # reconstruction
+rerun outputs/office_scene/query_office.rrd         # office preset query
 ```
 
 ### What you will see
 
 **Reconstruction** — raw camera feed alongside the live 3D point cloud. Camera frustums move through the scene as you scrub the timeline:
 
-<img src="outputs/tabletop/tabletop.png" width="45%"/> <img src="outputs/office_scene/office_reconstruct.png" width="45%"/>
+<table>
+<tr>
+<td align="center"><em>Tabletop (image input)</em></td>
+<td align="center"><em>Office (video input)</em></td>
+</tr>
+<tr>
+<td><img src="outputs/tabletop/tabletop.png" width="100%"/></td>
+<td><img src="outputs/office_scene/office_reconstruct.png" width="100%"/></td>
+</tr>
+</table>
 
 **Query** — four panels: raw camera feed, 3D reconstruction, 2D detections per frame, and the 3D oriented bounding box localising the object in the scene:
 
-<img src="outputs/tabletop/query.png" width="45%"/> <img src="outputs/office_scene/office_query.png" width="45%"/>
+<table>
+<tr>
+<td align="center"><em>Tabletop — "find the bulldozer"</em></td>
+<td align="center"><em>Office — preset scan</em></td>
+</tr>
+<tr>
+<td><img src="outputs/tabletop/query.png" width="100%"/></td>
+<td><img src="outputs/office_scene/office_query.png" width="100%"/></td>
+</tr>
+</table>
 
-The object here is a LEGO Technic bulldozer — chosen deliberately to show that queries can be specific and unconventional. There was no bulldozer class trained anywhere. Grounding DINO found it from the text prompt alone.
+The bulldozer is a LEGO Technic model — chosen deliberately to show that queries can be specific and unconventional. There was no bulldozer class trained anywhere. Grounding DINO found it from the text prompt alone.
 
 ---
 
@@ -134,18 +154,19 @@ python reconstruct.py \
 **From a video:**
 ```bash
 python reconstruct.py \
-    --video examples/my_scene.mp4 \
-    --out outputs/my_scene \
+    --video examples/office_Scene.mp4 \
+    --out outputs/office_scene \
     --fps 2.0 \
     --max-frames 50 \
-    --save-rrd outputs/my_scene/scene.rrd
+    --save-rrd outputs/office_scene/reconstruct_office.rrd
 ```
 
-`--fps` controls how many frames are sampled per second of video (default: 2.0). `--max-frames` caps the total frames fed to VGGT — quality degrades beyond ~50 frames so this is set conservatively by default.
+`--fps` controls how many frames are sampled per second of video (default: 2.0). `--max-frames` caps the total frames fed to VGGT — quality degrades beyond ~50 frames so this is set conservatively by default. Extracted frames are saved to `--out/frames/` for use at query time.
 
 Open the result:
 ```bash
-rerun outputs/tabletop/tabletop.rrd
+rerun outputs/tabletop/tabletop.rrd           # tabletop
+rerun outputs/office_scene/reconstruct_office.rrd   # office
 ```
 
 Outputs saved to the `--out` directory:
@@ -178,17 +199,20 @@ python query.py outputs/tabletop "find the bulldozer, cup, bottle" \
 
 **Full environment scan using a preset:**
 ```bash
-python query.py outputs/my_scene \
+python query.py outputs/office_scene \
     --preset office \
-    --images examples/my_scene \
-    --save-rrd outputs/my_scene/query_office.rrd
+    --images outputs/office_scene/frames \
+    --save-rrd outputs/office_scene/query_office.rrd
 ```
 
 Available presets: `office`, `home`, `classroom`, `kitchen`, `warehouse`.
 
+> **Video input note:** pass `--images outputs/office_scene/frames` — these are the frames extracted by `reconstruct.py`. For image input, pass the original image directory (e.g. `--images examples/tabletop`).
+
 Open the result:
 ```bash
-rerun outputs/tabletop/query_bulldozer.rrd
+rerun outputs/tabletop/query_bulldozer.rrd    # tabletop
+rerun outputs/office_scene/query_office.rrd  # office
 ```
 
 **Example terminal output:**
@@ -215,14 +239,31 @@ Results (1 objects found):
 | Query | `"find the bulldozer"` |
 | Result | Detected in all 25 frames at 0.89 confidence, 522K points lifted to 3D |
 
-See the GIF at the top and the reconstruction screenshot above.
+```bash
+python reconstruct.py --images examples/tabletop --out outputs/tabletop \
+    --save-rrd outputs/tabletop/tabletop.rrd
 
-### Office walkthrough — video input, preset query
+python query.py outputs/tabletop "find the bulldozer" \
+    --images examples/tabletop \
+    --save-rrd outputs/tabletop/query_bulldozer.rrd
+```
+
+### Office walkthrough — video input, preset query *(included)*
 
 | Input | Video walkthrough of an office scene |
 |---|---|
 | Query | `--preset office` (keyboard, mouse, chair, laptop) |
 | Result | 4 objects found — keyboard 0.83, mouse 0.83, chair 0.72, laptop 0.75 |
+
+```bash
+python reconstruct.py --video examples/office_Scene.mp4 --out outputs/office_scene \
+    --fps 2.0 --max-frames 50 \
+    --save-rrd outputs/office_scene/reconstruct_office.rrd
+
+python query.py outputs/office_scene --preset office \
+    --images outputs/office_scene/frames \
+    --save-rrd outputs/office_scene/query_office.rrd
+```
 
 ---
 
